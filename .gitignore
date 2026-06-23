@@ -1,0 +1,21 @@
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local Database & Scanned Output Data
+*.db
+screener_history.db
+screener_data.json
+settings.json
+
+# IDE / System files
+.idea/
+.vscode/
+.DS_Store

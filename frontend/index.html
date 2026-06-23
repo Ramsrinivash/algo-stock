@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finrio AI</title>
+    
+    <link rel="icon" type="image/png" href="favicon.png">
+    
+    <!-- Modern Premium Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+    
+    <!-- Custom Style Sheet -->
+    <link href="style.css" rel="stylesheet">
+    
+    <!-- TradingView Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+
+<div class="dashboard-wrapper">
+    <!-- Scan Progress Banner -->
+    <div id="scanProgressBanner" class="scan-progress-banner glass-card" style="display: none;">
+        <div class="progress-details">
+            <span id="progressText"><i class="fa-solid fa-spinner fa-spin"></i> Initializing scan...</span>
+            <span id="progressPctText">0%</span>
+        </div>
+        <div class="progress-bar-container">
+            <div id="progressBarFill" class="progress-bar-fill" style="width: 0%;"></div>
+        </div>
+    </div>
+    <!-- Header Banner -->
+    <header class="dashboard-header glass-card">
+        <div class="brand-section">
+            <img src="logo.png" alt="Finrio AI" class="brand-logo-img">
+            <div class="brand-details">
+                <p id="lastScan" class="text-secondary"><i class="fa-regular fa-clock"></i> Loading last scan time...</p>
+            </div>
+        </div>
+
+        <div class="header-actions">
+            <!-- Settings Button with alert-active indicator -->
+            <button id="btnSettings" class="btn-theme-toggle" title="Settings & Alerts" style="position:relative;">
+                <i class="fa-solid fa-gear"></i>
+                <span id="settingsAlertBadge" class="settings-badge" style="display:none;"></span>
+            </button>
+
+            <!-- Theme Toggle -->
+            <button id="btnThemeToggle" class="btn-theme-toggle" title="Toggle Theme">
+                <i class="fa-solid fa-moon"></i>
+            </button>
+
+
+            <!-- Nifty Live Status -->
+            <div class="nifty-status-card">
+                <div class="nifty-header">
+                    <span class="nifty-label">NIFTY 50 INDEX</span>
+                    <h4 id="niftyPrice" class="nifty-price">----</h4>
+                </div>
+                <div class="nifty-body">
+                    <span id="marketMood" class="mood-badge neutral">----</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Stats Dashboard Counters -->
+    <div class="stats-grid">
+        <div class="stat-card glass-card">
+            <div class="stat-icon-wrapper blue">
+                <i class="fa-solid fa-database"></i>
+            </div>
+            <div class="stat-details">
+                <h6>Total Stocks</h6>
+                <h2 id="totalStocks">0</h2>
+            </div>
+        </div>
+
+        <div class="stat-card glass-card buy">
+            <div class="stat-icon-wrapper green">
+                <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <div class="stat-details">
+                <h6>BUY / STRONG BUY</h6>
+                <h2 id="buyCount">0</h2>
+            </div>
+        </div>
+
+        <div class="stat-card glass-card watch">
+            <div class="stat-icon-wrapper amber">
+                <i class="fa-solid fa-eye"></i>
+            </div>
+            <div class="stat-details">
+                <h6>WATCH LIST</h6>
+                <h2 id="watchCount">0</h2>
+            </div>
+        </div>
+
+        <div class="stat-card glass-card avoid">
+            <div class="stat-icon-wrapper red">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div class="stat-details">
+                <h6>AVOID LIST</h6>
+                <h2 id="avoidCount">0</h2>
+            </div>
+        </div>
+    </div>
+
+    <!-- Market Trend Distribution Banner -->
+    <div class="trend-distribution-bar glass-card">
+        <div class="trend-dist-title">
+            <i class="fa-solid fa-compass"></i>
+            <span>NIFTY 500 TREND DISTRIBUTION</span>
+        </div>
+        <div class="trend-dist-wrapper">
+            <div class="trend-progress-track">
+                <div id="uptrendBar" class="trend-progress-fill uptrend" style="width: 0%;"></div>
+                <div id="sidewaysBar" class="trend-progress-fill sideways" style="width: 0%;"></div>
+                <div id="downtrendBar" class="trend-progress-fill downtrend" style="width: 0%;"></div>
+            </div>
+            <div class="trend-dist-items">
+                <div class="trend-dist-item uptrend">
+                    <span class="dot"></span>
+                    <span class="label">Uptrend:</span>
+                    <strong id="uptrendCount">0</strong>
+                    <span id="uptrendPct" class="pct-val">(0%)</span>
+                </div>
+                <div class="trend-dist-item sideways">
+                    <span class="dot"></span>
+                    <span class="label">Sideways:</span>
+                    <strong id="sidewaysCount">0</strong>
+                    <span id="sidewaysPct" class="pct-val">(0%)</span>
+                </div>
+                <div class="trend-dist-item downtrend">
+                    <span class="dot"></span>
+                    <span class="label">Downtrend:</span>
+                    <strong id="downtrendCount">0</strong>
+                    <span id="downtrendPct" class="pct-val">(0%)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Layout Grid -->
+    <div class="content-grid">
+        <!-- Main Stock Screener Table Area -->
+        <main class="table-area glass-card">
+            <!-- Dashboard Tab Switcher -->
+            <div class="dashboard-tabs-header">
+                <button id="btnTabScreener" class="dashboard-tab-btn active">
+                    <i class="fa-solid fa-list-check"></i> Screener Results
+                </button>
+                <button id="btnTabPerformance" class="dashboard-tab-btn">
+                    <i class="fa-solid fa-chart-line"></i> Performance Evaluation (EOD)
+                </button>
+            </div>
+
+            <!-- Screener Results Panel -->
+            <div id="screenerTablePanel">
+                <div class="table-controls">
+                    <div class="table-header-row">
+                        <h3>Screener Results</h3>
+                        
+                        <div class="header-actions-group">
+                            <div class="search-box-wrapper">
+                                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                                <input 
+                                    type="text" 
+                                    id="searchBox" 
+                                    class="custom-input" 
+                                    placeholder="Search stock symbol or sector...">
+                            </div>
+                            
+                            <button id="btnManageStocks" class="btn-manage-stocks">
+                                <i class="fa-solid fa-sliders"></i>
+                                <span>Manage Tickers</span>
+                            </button>
+                            
+                            <button id="btnUploadCSV" class="btn-manage-stocks">
+                                <i class="fa-solid fa-file-import"></i>
+                                <span>Upload CSV</span>
+                            </button>
+                            <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+                        </div>
+                    </div>
+                    
+                    <div class="table-filters-bar">
+                        <div class="select-box-wrapper">
+                            <i class="fa-solid fa-filter filter-icon"></i>
+                            <select id="signalFilter" class="custom-select">
+                                <option value="">All Signals</option>
+                                <option value="STRONG BUY">STRONG BUY</option>
+                                <option value="BUY">BUY</option>
+                                <option value="WATCH">WATCH</option>
+                                <option value="AVOID">AVOID</option>
+                            </select>
+                        </div>
+
+                        <!-- Cap Category Filter -->
+                        <div class="select-box-wrapper">
+                            <i class="fa-solid fa-chart-pie filter-icon"></i>
+                            <select id="capFilter" class="custom-select">
+                                <option value="">All Market Caps</option>
+                                <option value="Large Cap">🔵 Large Cap (&gt;₹50K Cr)</option>
+                                <option value="Mid Cap">🟡 Mid Cap (₹5K–50K Cr)</option>
+                                <option value="Small Cap">🔴 Small Cap (&lt;₹5K Cr)</option>
+                            </select>
+                        </div>
+
+                        <div class="select-box-wrapper">
+                            <i class="fa-solid fa-compass filter-icon"></i>
+                            <select id="indicatorFilter" class="custom-select">
+                                <option value="">All Indicators</option>
+                                <optgroup label="⚡ Swing Setups">
+                                    <option value="pullbackBuy">🎯 Pullback Buy Zone</option>
+                                    <option value="breakoutResistance">💥 Resistance Breakout</option>
+                                    <option value="vcpSetup">📈 Volatility Contraction (VCP)</option>
+                                    <option value="highRs">📊 High Relative Strength (RS)</option>
+                                    <option value="breakout52w">52W High Breakout + Vol</option>
+                                </optgroup>
+                                <optgroup label="── Trend ──">
+                                    <option value="supertrendBuy">Supertrend: BUY (10,3)</option>
+                                    <option value="supertrendSell">Supertrend: SELL</option>
+                                    <option value="weeklyBull">Weekly Trend: Bullish</option>
+                                    <option value="emaCross">EMA Crossover (9/21)</option>
+                                    <option value="adxStrong">ADX Strong (&gt; 25)</option>
+                                </optgroup>
+                                <optgroup label="── Momentum ──">
+                                    <option value="macdBull">MACD: Bullish Cross</option>
+                                    <option value="macdAbove">MACD: Above Signal</option>
+                                    <option value="vwapBullish">VWAP: Bullish (Close &gt; VWAP)</option>
+                                    <option value="rsiOversold">RSI: Oversold (&lt; 30)</option>
+                                    <option value="rsiOverbought">RSI: Overbought (&gt; 70)</option>
+                                </optgroup>
+                                <optgroup label="── Volume &amp; Price ──">
+                                    <option value="volSpike">Volume Spike (&gt; 2x)</option>
+                                    <option value="gapUp">Gap-Up Today</option>
+                                    <option value="near52wHigh">Near 52W High (top 10%)</option>
+                                    <option value="nearSupport">Near Support (&lt; 3%)</option>
+                                    <option value="bbSqueeze">Bollinger Squeeze</option>
+                                    <option value="nearLowerBand">Near BB Lower Band</option>
+                                </optgroup>
+                                <optgroup label="── CPR / Pivot ──">
+                                    <option value="cprBullish">CPR: Bullish (Close &gt; CPR)</option>
+                                    <option value="cprNarrow">CPR: Narrow (&lt; 0.25%)</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom Premium Table -->
+                <div class="table-scroll-container">
+                    <table class="custom-table">
+                        <thead>
+                            <tr class="sortable-headers">
+                                <th data-sort="sym">Symbol <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th data-sort="sector">Sector <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-center active-sort" data-sort="score">Score <span class="sort-icon"><i class="fa-solid fa-sort-down"></i></span></th>
+                                <th class="text-center" data-sort="rsi">RSI (14) <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-center" data-sort="volRatio">Vol Ratio <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-center" data-sort="mansfieldRs">RS Index <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-center" data-sort="signal">Signal <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-end" data-sort="price">Price <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-center" data-sort="shares">Shares <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-end" data-sort="capitalUsed">Capital Used <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-end" data-sort="maxLoss">Max Loss <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-end" id="tableTgtHeader" data-sort="customTgtPrice">Tgt (10%) <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="stockTable">
+                            <!-- Rendered by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- EOD Performance Tracker Panel -->
+            <div id="performancePanel" style="display: none;">
+                <div class="table-controls">
+                    <h3>Performance Tracker</h3>
+                    <div class="filter-group">
+                        <div class="select-box-wrapper" style="width: 280px;">
+                            <i class="fa-solid fa-clock-rotate-left filter-icon"></i>
+                            <select id="compareScanSelect" class="custom-select" style="padding-left: 34px;">
+                                <option value="">Loading historical scans...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance Stats Cards Grid -->
+                <div class="perf-stats-grid">
+                    <div class="perf-stat-card">
+                        <h6>Average Return</h6>
+                        <h2 id="perfAvgReturn" class="perf-val profit">0.0%</h2>
+                    </div>
+                    <div class="perf-stat-card">
+                        <h6>Success/Win Rate</h6>
+                        <h2 id="perfWinRate" class="perf-val">0.0%</h2>
+                    </div>
+                    <div class="perf-stat-card">
+                        <h6>Nifty 50 Return</h6>
+                        <h2 id="perfNiftyReturn" class="perf-val">0.0%</h2>
+                    </div>
+                    <div class="perf-stat-card">
+                        <h6>Recommendations Evaluated</h6>
+                        <h2 id="perfTotalRecs" class="perf-val">0</h2>
+                    </div>
+                </div>
+
+                <!-- Best & Worst Widget -->
+                <div class="perf-extreme-grid">
+                    <div class="perf-extreme-card best">
+                        <div class="extreme-header">
+                            <i class="fa-solid fa-arrow-trend-up"></i>
+                            <span>Best Performer</span>
+                        </div>
+                        <div class="extreme-details">
+                            <h4 id="perfBestStock">—</h4>
+                            <span id="perfBestReturn" class="profit">0.0%</span>
+                        </div>
+                    </div>
+                    <div class="perf-extreme-card worst">
+                        <div class="extreme-header">
+                            <i class="fa-solid fa-arrow-trend-down"></i>
+                            <span>Worst Performer</span>
+                        </div>
+                        <div class="extreme-details">
+                            <h4 id="perfWorstStock">—</h4>
+                            <span id="perfWorstReturn" class="loss">0.0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Comparative Table -->
+                <div class="table-scroll-container" style="margin-top: 20px;">
+                    <table class="custom-table">
+                        <thead>
+                            <tr class="sortable-headers-perf">
+                                <th data-sort-perf="sym">Symbol <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-center" data-sort-perf="score">Score <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-center" data-sort-perf="signal">Signal <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-end" data-sort-perf="initialPrice">Entry Price <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-end" data-sort-perf="currentPrice">Latest Price <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                                <th class="text-end active-sort" data-sort-perf="performance">Change % <span class="sort-icon"><i class="fa-solid fa-sort-down"></i></span></th>
+                                <th class="text-center" data-sort-perf="status">Status <span class="sort-icon"><i class="fa-solid fa-sort"></i></span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="performanceTableBody">
+                            <!-- Rendered by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+
+        <!-- Sidebar Widgets Panel -->
+        <aside class="sidebar-area">
+
+            <!-- ── Risk Management Calculator Card ───────────────── -->
+            <div class="risk-panel-card glass-card">
+                <div class="card-header">
+                    <i class="fa-solid fa-shield-halved text-accent"></i>
+                    <h3>Risk Management</h3>
+                </div>
+
+                <!-- Capital Input -->
+                <div class="risk-input-group">
+                    <label class="risk-label">Trading Capital</label>
+                    <div class="risk-input-wrapper">
+                        <span class="risk-prefix">₹</span>
+                        <input
+                            type="number"
+                            id="capitalInput"
+                            class="risk-input"
+                            value="100000"
+                            min="1000"
+                            step="1000"
+                            placeholder="100000">
+                    </div>
+                </div>
+
+                <!-- Risk % Slider -->
+                <div class="risk-input-group">
+                    <div class="risk-label-row">
+                        <label class="risk-label">Risk Per Trade</label>
+                        <span class="risk-pct-display" id="riskPctDisplay">1%</span>
+                    </div>
+                    <input
+                        type="range"
+                        id="riskPctSlider"
+                        class="risk-slider"
+                        min="0.5"
+                        max="5"
+                        step="0.5"
+                        value="1">
+                    <div class="risk-slider-labels">
+                        <span>0.5%</span>
+                        <span>Safe</span>
+                        <span>5%</span>
+                    </div>
+                </div>
+
+                <!-- Target Goal % Slider -->
+                <div class="risk-input-group">
+                    <div class="risk-label-row">
+                        <label class="risk-label">Target Goal %</label>
+                        <span class="risk-pct-display" id="targetPctDisplay">10%</span>
+                    </div>
+                    <input
+                        type="range"
+                        id="targetPctSlider"
+                        class="risk-slider"
+                        min="1"
+                        max="15"
+                        step="1"
+                        value="10">
+                    <div class="risk-slider-labels">
+                        <span>1%</span>
+                        <span>Conservative</span>
+                        <span>15%</span>
+                    </div>
+                </div>
+
+                <!-- Live Summary Stats -->
+                <div class="risk-summary">
+                    <div class="risk-stat-row">
+                        <span class="risk-stat-label"><i class="fa-solid fa-rupee-sign"></i> Max Risk / Trade</span>
+                        <span class="risk-stat-value" id="riskPerTrade">₹2,000</span>
+                    </div>
+                    <div class="risk-stat-row">
+                        <span class="risk-stat-label"><i class="fa-solid fa-layer-group"></i> Max Positions</span>
+                        <span class="risk-stat-value" id="maxPositions">—</span>
+                    </div>
+                    <div class="risk-stat-row">
+                        <span class="risk-stat-label"><i class="fa-solid fa-chart-pie"></i> Capital per Trade</span>
+                        <span class="risk-stat-value" id="capitalPerTrade">—</span>
+                    </div>
+                </div>
+
+                <!-- Risk:Reward Reminder -->
+                <div class="risk-rr-badge">
+                    <span>Min R:R Ratio → <strong>1 : 2</strong> (Always)</span>
+                </div>
+            </div>
+
+            <!-- ── Top 10 Swing Picks ──────────────────────────── -->
+            <div class="top-picks-card glass-card">
+                <div class="card-header">
+                    <i class="fa-solid fa-fire text-accent"></i>
+                    <h3>Top 10 Swing Picks</h3>
+                </div>
+                <div id="topPicks" class="top-picks-list">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+
+            <!-- ── Sector Rotation Heatmap ──────────────── -->
+            <div class="top-picks-card glass-card">
+                <div class="card-header">
+                    <i class="fa-solid fa-fire-flame-curved text-accent"></i>
+                    <h3>Sector Rotation</h3>
+                </div>
+                <div id="sectorHeatmap" style="padding:4px 0;">
+                    <div class="text-muted" style="padding:12px 0;font-size:0.8rem;">Loading sector data...</div>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<!-- ── Position Detail Modal ─────────────────────────────────────────── -->
+<div id="posModal" class="pos-modal-overlay" style="display:none;">
+    <div class="pos-modal-box glass-card">
+        <div class="pos-modal-header">
+            <div>
+                <h3 id="posModalSym">STOCK</h3>
+                <span id="posModalSector" class="text-muted" style="font-size:0.85rem;"></span>
+            </div>
+            <button class="pos-modal-close" id="posModalClose">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <div class="pos-modal-grid">
+            <!-- 1. Entry Price -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Entry Price</span>
+                <span class="pos-modal-val" id="posPrice">—</span>
+            </div>
+            <!-- 2. Stop Loss -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Stop Loss</span>
+                <span class="pos-modal-val loss" id="posSlPrice">—</span>
+            </div>
+            <!-- 3. SL Distance -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">SL Distance</span>
+                <span class="pos-modal-val" id="posSlPct">—</span>
+            </div>
+            <!-- 4. Shares to Buy -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Shares to Buy</span>
+                <span class="pos-modal-val accent" id="posShares">—</span>
+            </div>
+            <!-- 5. Capital Needed -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Capital Needed</span>
+                <span class="pos-modal-val" id="posCapital">—</span>
+            </div>
+            <!-- 6. Portfolio % -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Portfolio %</span>
+                <span class="pos-modal-val" id="posPortfolioPct">—</span>
+            </div>
+            <!-- 7. Max Loss -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Max Loss (<span id="posMaxLossPct">1%</span>)</span>
+                <span class="pos-modal-val loss" id="posMaxLoss">—</span>
+            </div>
+            <!-- 8. Trend Sustain Days -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Trend Sustain Days</span>
+                <span class="pos-modal-val accent" id="posTrendDays">—</span>
+            </div>
+            <!-- 9. Trend Continuation Score -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Trend Score</span>
+                <span class="pos-modal-val accent" id="posTrendContScore">—</span>
+            </div>
+            <!-- 10. Supertrend (10, 3) -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Supertrend (10, 3)</span>
+                <span class="pos-modal-val" id="posSupertrend">—</span>
+            </div>
+            <!-- 11. VWAP (20) -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">VWAP (20)</span>
+                <span class="pos-modal-val" id="posVwap">—</span>
+            </div>
+            <!-- 12. CPR Signal -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">CPR Signal</span>
+                <span class="pos-modal-val" id="posCprSignal">—</span>
+            </div>
+            <!-- 13. MACD (12, 26, 9) -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">MACD (12, 26, 9)</span>
+                <span class="pos-modal-val" id="posMacd">—</span>
+            </div>
+            <!-- 14. Bollinger Bands (20, 2) -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Bollinger Bands</span>
+                <span class="pos-modal-val" id="posBollinger">—</span>
+            </div>
+            <!-- 15. ADX (14) -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">ADX (14)</span>
+                <span class="pos-modal-val" id="posAdx">—</span>
+            </div>
+            <!-- 16. Weekly Trend -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Weekly Trend</span>
+                <span class="pos-modal-val" id="posWeeklyTrend">—</span>
+            </div>
+            <!-- 17. Gap Status -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Gap Status</span>
+                <span class="pos-modal-val" id="posGapStatus">—</span>
+            </div>
+            <!-- 18. 52-Week Range -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">52-Week Range</span>
+                <span class="pos-modal-val" id="pos52wRange">—</span>
+            </div>
+            <!-- 19. Target 1 Price -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Target 1 Price (1:1)</span>
+                <span class="pos-modal-val profit" id="posTgt1Price">—</span>
+            </div>
+            <!-- 20. Target 1 Profit -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Target 1 Profit</span>
+                <span class="pos-modal-val profit" id="posTgt1">—</span>
+            </div>
+            <!-- 21. Target 2 Price -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Target 2 Price (2:1)</span>
+                <span class="pos-modal-val profit" id="posTgt2Price">—</span>
+            </div>
+            <!-- 22. Target 2 Profit -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Target 2 Profit</span>
+                <span class="pos-modal-val profit" id="posTgt2">—</span>
+            </div>
+            <!-- 23. Target 3 Price -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Target 3 Price (3:1)</span>
+                <span class="pos-modal-val profit" id="posTgt3Price">—</span>
+            </div>
+            <!-- 24. Target 3 Profit -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Target 3 Profit</span>
+                <span class="pos-modal-val profit" id="posTgt3">—</span>
+            </div>
+            <!-- 25. Custom Target Price -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label" id="posCustomTgtLabel">Custom Target (10%)</span>
+                <span class="pos-modal-val profit" id="posCustomTgtPrice">—</span>
+            </div>
+            <!-- 26. Custom Target Profit -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Custom Target Profit</span>
+                <span class="pos-modal-val profit" id="posCustomTgt">—</span>
+            </div>
+            <!-- 27. Custom R:R Ratio -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Custom R:R Ratio</span>
+                <span class="pos-modal-val accent" id="posCustomRrRatio">—</span>
+            </div>
+            <!-- 28. Nifty RS (Index) -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">Nifty RS (Index)</span>
+                <span class="pos-modal-val" id="posMansfieldRs">—</span>
+            </div>
+            <!-- 29. VCP Setup -->
+            <div class="pos-modal-stat">
+                <span class="pos-modal-label">VCP Setup Status</span>
+                <span class="pos-modal-val" id="posVcpSetup">—</span>
+            </div>
+        </div>
+
+        <div class="pos-modal-candle" id="posCandle"></div>
+        
+        <!-- Dynamic Chart Tabs -->
+        <div class="modal-tabs">
+            <button class="modal-tab active" id="btnTabChart">Technical Chart</button>
+            <button class="modal-tab" id="btnTabScore">Score Trend (History)</button>
+        </div>
+
+        <!-- Dynamic Chart Wrapper Containers -->
+        <div class="modal-charts-wrapper">
+            <div id="modalChartContainer" class="chart-container-div"></div>
+            <div id="modalScoreHistoryContainer" class="chart-container-div" style="display: none;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Stock Management Modal ───────────────────────────────────────── -->
+<div id="stocksModal" class="pos-modal-overlay" style="display:none;">
+    <div class="pos-modal-box glass-card stocks-modal-box">
+        <div class="pos-modal-header">
+            <div>
+                <h3>Manage Ticker List</h3>
+                <span class="text-muted" style="font-size:0.85rem;">Add or remove custom stock symbols. Default list is protected.</span>
+            </div>
+            <button class="pos-modal-close" id="stocksModalClose">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <!-- Add Stock Form -->
+        <form id="addStockForm" class="add-stock-form">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Ticker ID</label>
+                    <input type="text" id="addSym" placeholder="e.g. INFY" required class="custom-input">
+                </div>
+                <div class="form-group">
+                    <label>Yahoo Ticker</label>
+                    <input type="text" id="addYahoo" placeholder="e.g. INFY.NS" required class="custom-input">
+                </div>
+                <div class="form-group">
+                    <label>Company Name</label>
+                    <input type="text" id="addName" placeholder="e.g. Infosys Ltd" required class="custom-input">
+                </div>
+                <div class="form-group">
+                    <label>Sector</label>
+                    <select id="addSector" class="custom-select" required>
+                        <option value="Auto">Auto</option>
+                        <option value="Banking">Banking</option>
+                        <option value="Power">Power</option>
+                        <option value="Metal">Metal</option>
+                        <option value="Defence">Defence</option>
+                        <option value="IT">IT</option>
+                        <option value="Pharma">Pharma</option>
+                        <option value="NBFC">NBFC</option>
+                        <option value="Infra">Infra</option>
+                        <option value="Realty">Realty</option>
+                        <option value="Consumer">Consumer</option>
+                        <option value="Chemical">Chemical</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn-add-stock">
+                <i class="fa-solid fa-plus"></i> Add Custom Ticker
+            </button>
+        </form>
+
+        <hr class="modal-divider">
+
+        <!-- Custom Stocks Table list -->
+        <div class="custom-stocks-list-wrapper">
+            <h4>Active Custom Stocks</h4>
+            <div class="table-scroll-container micro">
+                <table class="custom-table micro">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Name</th>
+                            <th>Sector</th>
+                            <th>Yahoo Ticker</th>
+                            <th class="text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customStocksTableBody">
+                        <!-- Rendered by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     SETTINGS MODAL — Telegram Alerts & Preferences
+     ════════════════════════════════════════════════════════════ -->
+<div id="settingsModalOverlay" class="pos-modal-overlay" style="display:none;">
+    <div class="pos-modal-box settings-modal-box glass-card">
+
+        <!-- Header -->
+        <div class="pos-modal-header">
+            <div>
+                <h3><i class="fa-solid fa-gear" style="color:var(--accent);margin-right:10px;"></i>Settings & Alerts</h3>
+                <p style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;">Configure Telegram alerts and app preferences</p>
+            </div>
+            <button class="pos-modal-close" id="btnCloseSettings"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <!-- Telegram Section -->
+        <div class="settings-section">
+            <div class="settings-section-header">
+                <i class="fa-brands fa-telegram" style="color:#229ED9;font-size:1.3rem;"></i>
+                <div>
+                    <h4>Telegram Bot Alerts</h4>
+                    <p>Get BUY signals sent to your Telegram — <strong>100% Free</strong></p>
+                </div>
+                <!-- Enable Toggle -->
+                <label class="toggle-switch" title="Enable/Disable Telegram Alerts">
+                    <input type="checkbox" id="alertsEnabled">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <!-- Setup Steps -->
+            <div class="setup-steps">
+                <div class="setup-step"><span class="step-num">1</span><span>Open Telegram → Search <strong>@BotFather</strong> → Send <code>/newbot</code></span></div>
+                <div class="setup-step"><span class="step-num">2</span><span>Choose a name (e.g. "Finrio Alerts") → Copy the <strong>Bot Token</strong></span></div>
+                <div class="setup-step"><span class="step-num">3</span><span>Open <strong>@userinfobot</strong> in Telegram → Copy your <strong>Chat ID</strong></span></div>
+                <div class="setup-step"><span class="step-num">4</span><span>Paste below → Click <strong>Test Connection</strong> → Save</span></div>
+            </div>
+
+            <div class="settings-inputs">
+                <div class="form-group">
+                    <label><i class="fa-solid fa-key"></i> Bot Token</label>
+                    <input type="password" id="telegramToken" class="custom-input" placeholder="e.g. 7123456789:AAF...">
+                </div>
+                <div class="form-group">
+                    <label><i class="fa-solid fa-id-badge"></i> Chat ID</label>
+                    <input type="text" id="telegramChatId" class="custom-input" placeholder="e.g. 123456789 or -100123456789">
+                </div>
+            </div>
+
+            <!-- Alert Options -->
+            <div class="settings-options">
+                <div class="settings-option">
+                    <label>Alert on every scan</label>
+                    <label class="toggle-switch-sm">
+                        <input type="checkbox" id="alertOnScan" checked>
+                        <span class="toggle-slider-sm"></span>
+                    </label>
+                </div>
+                <div class="settings-option">
+                    <label>Min Score for alert</label>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <input type="range" id="alertMinScore" min="50" max="100" value="70" class="mini-slider">
+                        <span id="alertMinScoreVal" style="font-weight:700;color:var(--accent);min-width:32px;">70</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="settings-actions">
+                <button id="btnTestTelegram" class="btn-test-telegram">
+                    <i class="fa-solid fa-paper-plane"></i> Test Connection
+                </button>
+                <div id="telegramTestStatus" class="test-status" style="display:none;"></div>
+            </div>
+        </div>
+
+        <hr class="modal-divider">
+
+        <!-- Save Button / Scan Button Actions Bar -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;flex-wrap:wrap;gap:12px;">
+            <div>
+                <button id="btnScan" class="btn-scan" style="padding:10px 20px;">
+                    <i class="fa-solid fa-rotate"></i>
+                    <span id="btnScanText">Run Full Scan</span>
+                </button>
+            </div>
+            <div style="display:flex;gap:12px;">
+                <button id="btnCancelSettings" class="btn-manage-stocks">Cancel</button>
+                <button id="btnSaveSettings" class="btn-scan" style="padding:10px 28px;">
+                    <i class="fa-solid fa-floppy-disk"></i> Save Settings
+                </button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     PASSWORD PROTECTION MODAL
+     ════════════════════════════════════════════════════════════ -->
+<div id="passwordModalOverlay" class="pos-modal-overlay" style="display:none;">
+    <div class="pos-modal-box password-modal-box glass-card">
+        <div class="pos-modal-header">
+            <div>
+                <h3><i class="fa-solid fa-lock" style="color:var(--accent);margin-right:10px;"></i>Security Lock</h3>
+                <p style="font-size:0.82rem;color:var(--text-muted);margin-top:4px;">Enter password to access restricted settings</p>
+            </div>
+            <button class="pos-modal-close" id="btnCancelPassword"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="password-form-wrapper" style="margin-top:16px;">
+            <div class="form-group">
+                <label for="passwordInput" style="display:block;margin-bottom:8px;font-weight:500;color:var(--text-muted);"><i class="fa-solid fa-key"></i> Enter Passcode</label>
+                <input type="password" id="passwordInput" class="custom-input" placeholder="••••" style="font-size:1.4rem;text-align:center;letter-spacing:6px;font-weight:700;padding:12px;" autocomplete="off" maxlength="4">
+            </div>
+            <div id="passwordErrorMsg" class="test-status error" style="display:none;margin-top:12px;padding:10px;border-radius:8px;background:rgba(239, 68, 68, 0.15);color:#ff4a4a;text-align:center;font-size:0.85rem;font-weight:500;border:1px solid rgba(239, 68, 68, 0.25);">
+                <i class="fa-solid fa-circle-xmark" style="margin-right:6px;"></i> Incorrect passcode. Try again.
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:12px;margin-top:20px;">
+                <button id="btnSubmitPasswordCancel" class="btn-manage-stocks">Cancel</button>
+                <button id="btnSubmitPassword" class="btn-scan" style="padding:10px 24px;">
+                    <i class="fa-solid fa-unlock"></i> Unlock
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="app.js?v=3"></script>
+</body>
+</html>
