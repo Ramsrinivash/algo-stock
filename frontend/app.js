@@ -1604,16 +1604,16 @@ async function saveSettings() {
         });
         const data = await res.json();
         if (data.status === 'ok') {
-            showToast('✅ Settings saved successfully!');
+            alert('✅ Settings saved successfully!');
             // Update badge
             const badge = document.getElementById('settingsAlertBadge');
             if (badge) badge.style.display = enabled ? 'block' : 'none';
             closeSettingsModal();
         } else {
-            showToast('❌ Failed to save settings.');
+            alert('❌ Failed to save settings.');
         }
     } catch (e) {
-        showToast('❌ Server error saving settings.');
+        alert('❌ Server error saving settings.');
     }
 }
 
