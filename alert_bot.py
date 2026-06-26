@@ -37,19 +37,30 @@ DEFAULT_SETTINGS = {
 
 # ── LOAD / SAVE SETTINGS ─────────────────────────────────────
 def load_settings():
-    """Load settings.json. Returns defaults if file doesn't exist."""
-    if not os.path.exists(SETTINGS_FILE):
-        return dict(DEFAULT_SETTINGS)
-    try:
-        with open(SETTINGS_FILE, "r") as f:
-            saved = json.load(f)
-        # Merge with defaults so any new keys are always present
-        merged = dict(DEFAULT_SETTINGS)
-        merged.update(saved)
-        return merged
-    except Exception as e:
-        print(f"[alert_bot] Error loading settings: {e}")
-        return dict(DEFAULT_SETTINGS)
+    """Load settings.json and fallback to environment variables."""
+    settings = dict(DEFAULT_SETTINGS)
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r") as f:
+                saved = json.load(f)
+            settings.update(saved)
+        except Exception as e:
+            print(f"[alert_bot] Error loading settings: {e}")
+
+    # Fallback to Environment Variables for Render stability
+    env_token = os.environ.get("TELEGRAM_TOKEN")
+    if env_token:
+        settings["telegram_token"] = env_token.strip()
+
+    env_chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if env_chat_id:
+        settings["telegram_chat_id"] = env_chat_id.strip()
+
+    env_enabled = os.environ.get("ALERTS_ENABLED")
+    if env_enabled is not None:
+        settings["alerts_enabled"] = env_enabled.lower() in ["true", "1", "yes"]
+
+    return settings
 
 
 def save_settings(data):
