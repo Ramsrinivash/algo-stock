@@ -31,6 +31,7 @@ DEFAULT_SETTINGS = {
     "alerts_enabled":   False,
     "alert_on_scan":    True,
     "alert_min_score":  70,
+    "alert_limit":      10,
     "alert_signals":    ["BUY", "STRONG BUY"],
 }
 
@@ -182,10 +183,18 @@ def format_scan_alert(summary):
     ]
 
     if picks:
+        limit = settings.get("alert_limit", 10)
+        try:
+            limit = int(limit)
+            if limit <= 0:
+                limit = 10
+        except (ValueError, TypeError):
+            limit = 10
+
         lines.append("─────────────────────────")
-        lines.append("🏆 <b>TOP BUY PICKS</b>")
+        lines.append(f"🏆 <b>TOP {limit} BUY PICKS</b>" if limit < len(picks) else "🏆 <b>TOP BUY PICKS</b>")
         lines.append("─────────────────────────")
-        for i, s in enumerate(picks[:10], 1):
+        for i, s in enumerate(picks[:limit], 1):
             sig_emoji  = "⭐" if s.get("signal") == "STRONG BUY" else "✅"
             st_emoji   = "🟢" if s.get("supertrendDir") == "BUY" else "🔴"
             macd_emoji = "📈" if s.get("macdBull")  else ""

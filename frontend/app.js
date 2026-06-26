@@ -1562,6 +1562,7 @@ async function loadSettingsIntoModal() {
         document.getElementById('telegramChatId').value    = s.telegram_chat_id || '';
         document.getElementById('alertsEnabled').checked   = !!s.alerts_enabled;
         document.getElementById('alertOnScan').checked     = s.alert_on_scan !== false;
+        document.getElementById('alertLimit').value        = s.alert_limit || 10;
         const scoreSlider = document.getElementById('alertMinScore');
         const scoreVal    = document.getElementById('alertMinScoreVal');
         scoreSlider.value = s.alert_min_score || 70;
@@ -1581,11 +1582,13 @@ async function saveSettings() {
     const enabled = document.getElementById('alertsEnabled').checked;
     const onScan  = document.getElementById('alertOnScan').checked;
     const minScore= parseInt(document.getElementById('alertMinScore').value, 10);
+    const limit   = parseInt(document.getElementById('alertLimit').value, 10) || 10;
 
     const payload = {
         alerts_enabled:   enabled,
         alert_on_scan:    onScan,
         alert_min_score:  minScore,
+        alert_limit:      limit,
         telegram_chat_id: chatId,
     };
     if (token && !token.includes('•')) payload.telegram_token = token;
