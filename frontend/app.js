@@ -1604,16 +1604,16 @@ async function saveSettings() {
         });
         const data = await res.json();
         if (data.status === 'ok') {
-            alert('✅ Settings saved successfully!');
+            showToast('Settings saved successfully!', 'success');
             // Update badge
             const badge = document.getElementById('settingsAlertBadge');
             if (badge) badge.style.display = enabled ? 'block' : 'none';
             closeSettingsModal();
         } else {
-            alert('❌ Failed to save settings.');
+            showToast('Failed to save settings.', 'error');
         }
     } catch (e) {
-        alert('❌ Server error saving settings.');
+        showToast('Server error saving settings.', 'error');
     }
 }
 
@@ -1937,3 +1937,34 @@ window.addEventListener('resize', () => {
         }
     }
 });
+
+// Custom Visual Toast Notification Helper
+function showToast(message, type = 'success') {
+    let container = document.getElementById('toastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toastContainer';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = `toast-item ${type}`;
+    const icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-xmark';
+    const color = type === 'success' ? '#10B981' : '#EF4444';
+    toast.innerHTML = `
+        <i class="fa-solid ${icon}" style="color:${color};font-size:1.15rem;"></i>
+        <span class="toast-message">${message}</span>
+    `;
+    container.appendChild(toast);
+    setTimeout(() => { toast.classList.add('show'); }, 10);
+    setTimeout(() => {
+        toast.classList.remove('show');
+        toast.classList.add('hide');
+        setTimeout(() => {
+            toast.remove();
+            if (container.children.length === 0) {
+                container.remove();
+            }
+        }, 300);
+    }, 3500);
+}
