@@ -264,7 +264,7 @@ def scan_all(stocks_list=None, capital=100000, verbose=True, progress_callback=N
             ok_count += 1
         else:
             if verbose:
-                print(f"❌  {stock.get('error','failed')[:45]}")
+                print(f"[FAIL] {stock.get('error','failed')[:45]}")
             err_count += 1
 
         results.append(stock)
