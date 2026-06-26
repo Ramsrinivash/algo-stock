@@ -35,7 +35,7 @@ if hasattr(sys.stderr, 'buffer'):
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from flask import Flask, jsonify, send_from_directory, request
 from functools import wraps
 
@@ -118,6 +118,85 @@ def background_scan_task(stocks_list, capital):
     finally:
         with scan_lock:
             scan_progress["is_scanning"] = False
+
+def get_ist_time():
+    utc_now = datetime.now(timezone.utc)
+    ist_now = utc_now + timedelta(hours=5, minutes=30)
+    return ist_now
+
+def keep_awake_and_schedule_loop():
+    global scan_progress
+    import requests
+    import time
+    
+    # Wait 30 seconds after server starts before starting loops/pings
+    time.sleep(30)
+    
+    external_url = os.environ.get("RENDER_EXTERNAL_URL", "")
+    if not external_url:
+        external_url = f"http://127.0.0.1:{PORT}"
+        
+    print(f"[scheduler] Keep-awake scheduler active. Target URL: {external_url}", flush=True)
+    
+    last_ping_time = time.time()
+    
+    while True:
+        try:
+            # 1. Self-ping every 13 minutes to keep Render instance awake
+            now_time = time.time()
+            if now_time - last_ping_time >= 13 * 60:
+                last_ping_time = now_time
+                print(f"[scheduler] Sending keep-awake ping to {external_url}/api/status", flush=True)
+                resp = requests.get(f"{external_url}/api/status", timeout=15)
+                print(f"[scheduler] Keep-awake ping response status: {resp.status_code}", flush=True)
+                
+            # 2. Check if it's 5:00 PM IST (17:00 IST) for daily scan
+            ist_now = get_ist_time()
+            if ist_now.hour == 17 and ist_now.minute == 0:
+                current_date = ist_now.strftime("%Y-%m-%d")
+                
+                # File locking to prevent double execution under multi-worker gunicorn deployments
+                lock_file = "daily_scan.lock"
+                already_run = False
+                if os.path.exists(lock_file):
+                    try:
+                        with open(lock_file, "r") as lf:
+                            lock_date = lf.read().strip()
+                        if lock_date == current_date:
+                            already_run = True
+                    except Exception:
+                        pass
+                        
+                if not already_run:
+                    try:
+                        with open(lock_file, "w") as lf:
+                            lf.write(current_date)
+                    except Exception as le:
+                        print(f"[scheduler] Lock file write error: {le}", flush=True)
+                        
+                    print(f"[scheduler] Starting daily automated scan at 5:00 PM IST for date: {current_date}", flush=True)
+                    
+                    import stock_manager
+                    stocks_to_scan = stock_manager.get_all_stocks(STOCKS)
+                    
+                    with scan_lock:
+                        scan_progress["is_scanning"] = True
+                        scan_progress["current"] = 0
+                        scan_progress["total"] = 0
+                        scan_progress["symbol"] = ""
+                        
+                    t = threading.Thread(target=background_scan_task, args=(stocks_to_scan, 100000))
+                    t.daemon = True
+                    t.start()
+        except Exception as ex:
+            print(f"[scheduler] Loop exception: {ex}", flush=True)
+            
+        time.sleep(30) # check time every 30 seconds
+
+# Start keep-awake scheduler thread on app initialization
+scheduler_thread = threading.Thread(target=keep_awake_and_schedule_loop)
+scheduler_thread.daemon = True
+scheduler_thread.start()
 
 def stocks_dict():
     """Convert STOCKS list (merged with custom list) to dict for quick lookup by sym."""
@@ -708,7 +787,7 @@ def api_sector_analysis():
 def api_performance():
     import history_db
     conn = history_db.get_connection()
-    cursor = conn.cursor()
+    cursor = history_db.get_cursor(conn)
     
     try:
         # 1. Fetch all scans sorted by date descending
@@ -752,12 +831,13 @@ def api_performance():
                     "message": "Cannot compare the latest scan with itself."
                 }), 400
                 
-        # 3. Fetch latest scan stock records
-        cursor.execute("SELECT sym, price, change, signal FROM history_records WHERE scan_id = ?", (latest_scan_id,))
+        # 3. Fetch latest scan stock records (using dynamic placeholders)
+        placeholder = "%s" if history_db.DATABASE_URL else "?"
+        cursor.execute(f"SELECT sym, price, change, signal FROM history_records WHERE scan_id = {placeholder}", (latest_scan_id,))
         latest_records = {row["sym"].upper(): dict(row) for row in cursor.fetchall()}
         
         # 4. Fetch compare scan stock records
-        cursor.execute("SELECT sym, price, change, score, signal FROM history_records WHERE scan_id = ?", (compare_scan_id,))
+        cursor.execute(f"SELECT sym, price, change, score, signal FROM history_records WHERE scan_id = {placeholder}", (compare_scan_id,))
         compare_records = [dict(row) for row in cursor.fetchall()]
         
         # 5. Filter for recommended BUY or STRONG BUY in the compare scan

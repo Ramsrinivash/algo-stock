@@ -319,6 +319,8 @@ p {
 /* ── Main Screener Table Area ───────────────────────────────────────────── */
 .table-area {
     padding: 24px;
+    min-width: 0;
+    width: 100%;
 }
 
 .table-controls {
@@ -718,13 +720,25 @@ body.light-mode .table-filters-bar {
 @media (max-width: 768px) {
     .dashboard-header {
         flex-direction: column;
-        align-items: stretch;
+        align-items: center;
+        text-align: center;
         gap: 16px;
+        padding: 16px;
+    }
+    
+    .brand-section {
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
     }
     
     .header-actions {
-        flex-direction: column;
-        align-items: stretch;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+        gap: 12px;
+        width: 100%;
     }
     
     .table-controls {
@@ -1317,7 +1331,7 @@ body.light-mode .table-filters-bar {
 /* Tablet / Tab View (Medium Screens) */
 @media (max-width: 1024px) {
     .content-grid {
-        grid-template-columns: 1fr; /* Stack sidebar below table */
+        grid-template-columns: minmax(0, 1fr); /* Stack sidebar below table and constrain width */
     }
     
     .stats-grid {
@@ -1327,8 +1341,8 @@ body.light-mode .table-filters-bar {
     /* Hide secondary metrics in the table to prevent overflow */
     .custom-table th:nth-child(2), .custom-table td:nth-child(2),   /* Sector */
     .custom-table th:nth-child(5), .custom-table td:nth-child(5),   /* Vol Ratio */
-    .custom-table th:nth-child(9), .custom-table td:nth-child(9),   /* Capital Used */
-    .custom-table th:nth-child(10), .custom-table td:nth-child(10)  /* Max Loss */ {
+    .custom-table th:nth-child(10), .custom-table td:nth-child(10), /* Capital Used */
+    .custom-table th:nth-child(11), .custom-table td:nth-child(11)  /* Max Loss */ {
         display: none;
     }
 }
@@ -1350,11 +1364,63 @@ body.light-mode .table-filters-bar {
     
     /* Hide more details to fit thin screens */
     .custom-table th:nth-child(2), .custom-table td:nth-child(2),   /* Sector */
+    .custom-table th:nth-child(4), .custom-table td:nth-child(4),   /* RSI */
     .custom-table th:nth-child(5), .custom-table td:nth-child(5),   /* Vol Ratio */
-    .custom-table th:nth-child(8), .custom-table td:nth-child(8),   /* Shares */
-    .custom-table th:nth-child(9), .custom-table td:nth-child(9),   /* Capital Used */
-    .custom-table th:nth-child(10), .custom-table td:nth-child(10), /* Max Loss */
-    .custom-table th:nth-child(11), .custom-table td:nth-child(11)  /* Tgt 2:1 */ {
+    .custom-table th:nth-child(6), .custom-table td:nth-child(6),   /* RS Index */
+    .custom-table th:nth-child(9), .custom-table td:nth-child(9),   /* Shares */
+    .custom-table th:nth-child(10), .custom-table td:nth-child(10), /* Capital Used */
+    .custom-table th:nth-child(11), .custom-table td:nth-child(11)  /* Max Loss */ {
+        display: none;
+    }
+    
+    /* Hide details in Performance Tracker table */
+    .sortable-headers-perf th:nth-child(2), #performanceTableBody td:nth-child(2), /* Score */
+    .sortable-headers-perf th:nth-child(3), #performanceTableBody td:nth-child(3)  /* Signal */ {
+        display: none;
+    }
+    
+    .perf-extreme-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    /* Pill tabs optimization on mobile */
+    .dashboard-tabs-header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        border-bottom: none;
+        background: transparent;
+        padding: 0;
+        border-radius: 0;
+        width: 100%;
+        margin-bottom: 20px;
+    }
+    
+    .dashboard-tab-btn {
+        font-size: 0.9rem;
+        padding: 8px 16px;
+        border-radius: 20px;
+        background: rgba(0, 0, 0, 0.25);
+        color: var(--text-secondary);
+        transition: all 0.25s ease;
+        border: 1px solid var(--border-color);
+    }
+    
+    body.light-mode .dashboard-tab-btn {
+        background: rgba(0, 0, 0, 0.04);
+        border-color: rgba(0, 0, 0, 0.08);
+    }
+    
+    .dashboard-tab-btn.active {
+        background: var(--accent);
+        color: #ffffff !important;
+        border-color: var(--accent);
+        box-shadow: 0 4px 12px var(--accent-glow);
+    }
+    
+    .dashboard-tab-btn.active::after {
         display: none;
     }
     
@@ -1720,6 +1786,7 @@ body.light-mode .supertrend-indicator.sell {
 /* ── Dashboard Tabs switcher ────────────────────────────────────────────── */
 .dashboard-tabs-header {
     display: flex;
+    flex-wrap: wrap;
     gap: 24px;
     margin-bottom: 24px;
     border-bottom: 1px solid var(--border-color);

@@ -271,10 +271,20 @@ async function loadNifty() {
 // ═══════════════════════════════════════════════════════════════
 let lightweightChart = null;
 let scoreTrendChart = null;
+let chartObserver = null;
+let scoreObserver = null;
 let pollInterval = null;
 
 // Destroys any existing charts to prevent memory leaks or dual charts
 function clearCharts() {
+    if (chartObserver) {
+        chartObserver.disconnect();
+        chartObserver = null;
+    }
+    if (scoreObserver) {
+        scoreObserver.disconnect();
+        scoreObserver = null;
+    }
     if (lightweightChart) {
         try {
             lightweightChart.remove();
@@ -405,6 +415,15 @@ async function renderTechnicalChart(sym, price, slPrice, tgt2Price) {
         
         lightweightChart.timeScale().fitContent();
         
+        // Resize observer to make chart responsive to container width changes
+        chartObserver = new ResizeObserver(entries => {
+            if (lightweightChart) {
+                const w = container.clientWidth;
+                if (w > 0) lightweightChart.resize(w, 300);
+            }
+        });
+        chartObserver.observe(container);
+        
     } catch(err) {
         console.error("Error rendering technical chart:", err);
         container.innerHTML = `<div class="text-center text-muted" style="line-height:300px;">Failed to load chart data.</div>`;
@@ -487,6 +506,15 @@ async function renderScoreHistory(sym) {
         
         lineSeries.setData(uniqueDataPoints);
         scoreTrendChart.timeScale().fitContent();
+        
+        // Resize observer to make score trend chart responsive
+        scoreObserver = new ResizeObserver(entries => {
+            if (scoreTrendChart) {
+                const w = container.clientWidth;
+                if (w > 0) scoreTrendChart.resize(w, 300);
+            }
+        });
+        scoreObserver.observe(container);
         
     } catch(err) {
         console.error("Error rendering score history:", err);
@@ -1460,9 +1488,15 @@ document.getElementById('btnTabChart').addEventListener('click', () => {
     
     const sym = document.getElementById('posModalSym').textContent;
     const stock = allStocks.find(s => s.sym === sym);
-    if (stock && !lightweightChart) {
-        const pos = calcPosition(stock);
-        renderTechnicalChart(stock.sym, stock.price, stock.slPrice, pos.tgt2Price);
+    if (stock) {
+        if (!lightweightChart) {
+            const pos = calcPosition(stock);
+            renderTechnicalChart(stock.sym, stock.price, stock.slPrice, pos.tgt2Price);
+        } else {
+            // Trigger resize immediately to fit the block container
+            const w = document.getElementById('modalChartContainer').clientWidth;
+            if (w > 0) lightweightChart.resize(w, 300);
+        }
     }
 });
 
@@ -1475,6 +1509,10 @@ document.getElementById('btnTabScore').addEventListener('click', () => {
     const sym = document.getElementById('posModalSym').textContent;
     if (!scoreTrendChart) {
         renderScoreHistory(sym);
+    } else {
+        // Trigger resize immediately to fit the block container
+        const w = document.getElementById('modalScoreHistoryContainer').clientWidth;
+        if (w > 0) scoreTrendChart.resize(w, 300);
     }
 });
 
