@@ -39,26 +39,40 @@ DEFAULT_SETTINGS = {
 def load_settings():
     """Load settings.json and fallback to environment variables."""
     settings = dict(DEFAULT_SETTINGS)
+    saved = {}
     if os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, "r") as f:
                 saved = json.load(f)
-            settings.update(saved)
         except Exception as e:
             print(f"[alert_bot] Error loading settings: {e}")
 
-    # Fallback to Environment Variables for Render stability
-    env_token = os.environ.get("TELEGRAM_TOKEN")
-    if env_token:
-        settings["telegram_token"] = env_token.strip()
+    # Fallback to Environment Variables only if not saved in settings.json
+    if "telegram_token" in saved:
+        settings["telegram_token"] = saved["telegram_token"]
+    else:
+        env_token = os.environ.get("TELEGRAM_TOKEN")
+        if env_token:
+            settings["telegram_token"] = env_token.strip()
 
-    env_chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-    if env_chat_id:
-        settings["telegram_chat_id"] = env_chat_id.strip()
+    if "telegram_chat_id" in saved:
+        settings["telegram_chat_id"] = saved["telegram_chat_id"]
+    else:
+        env_chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+        if env_chat_id:
+            settings["telegram_chat_id"] = env_chat_id.strip()
 
-    env_enabled = os.environ.get("ALERTS_ENABLED")
-    if env_enabled is not None:
-        settings["alerts_enabled"] = env_enabled.lower() in ["true", "1", "yes"]
+    if "alerts_enabled" in saved:
+        settings["alerts_enabled"] = saved["alerts_enabled"]
+    else:
+        env_enabled = os.environ.get("ALERTS_ENABLED")
+        if env_enabled is not None:
+            settings["alerts_enabled"] = env_enabled.lower() in ["true", "1", "yes"]
+
+    # Load other config keys from settings.json
+    for k, v in saved.items():
+        if k not in ["telegram_token", "telegram_chat_id", "alerts_enabled"]:
+            settings[k] = v
 
     return settings
 
