@@ -42,6 +42,23 @@ OUTPUT_FILE = "screener_data.json"
 # Delay between stocks — avoids Yahoo rate limiting
 SCAN_DELAY  = 0.5   # seconds
 
+import math
+
+def clean_nan(obj):
+    """
+    Recursively replaces NaN and Inf float values in dicts/lists/values with None.
+    This prevents generating invalid JSON (NaN) which crashes JavaScript JSON.parse.
+    """
+    if isinstance(obj, dict):
+        return {k: clean_nan(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [clean_nan(x) for x in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    return obj
+
 
 # ── SCAN ONE STOCK ────────────────────────────────────────────
 def scan_one(sym, yahoo_sym, name, sector, capital=100000, df_nifty=None):
@@ -193,7 +210,7 @@ def scan_one(sym, yahoo_sym, name, sector, capital=100000, df_nifty=None):
     stock["profit2"]       = analysis["profit2"]
     stock["profit3"]       = analysis["profit3"]
 
-    return stock
+    return clean_nan(stock)
 
 
 # ── SCAN ALL STOCKS ───────────────────────────────────────────
@@ -400,6 +417,7 @@ def run_full_scan(stocks_list=None, capital=100000, verbose=True, progress_callb
 
     # Build and save summary
     summary = build_summary(results, nifty)
+    summary = clean_nan(summary)
     save_json(summary)
 
     # Save to SQLite history

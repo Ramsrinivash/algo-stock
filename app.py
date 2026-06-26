@@ -76,15 +76,29 @@ def add_header(r):
 def load_data_file():
     """
     Load screener_data.json if it exists.
-    Returns None if file not found.
+    If the file is missing (e.g. Render restart), fall back to loading from database.
     """
-    if not os.path.exists(DATA_FILE):
-        return None
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
+
+    # Recovery: Load from database cache if local file is missing/corrupted
     try:
-        with open(DATA_FILE, "r") as f:
-            return json.load(f)
-    except Exception:
-        return None
+        import history_db
+        db_data = history_db.load_latest_scan_cache()
+        if db_data:
+            print("[app] Restored screener_data.json from PostgreSQL database cache.")
+            # Cache it locally for subsequent fast reads
+            with open(DATA_FILE, "w") as f:
+                json.dump(db_data, f, indent=2)
+            return db_data
+    except Exception as e:
+        print(f"[app] Error recovering data file from DB: {e}")
+
+    return None
 
 
 import threading

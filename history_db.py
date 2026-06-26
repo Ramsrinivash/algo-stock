@@ -99,6 +99,15 @@ def init_db():
             )
         """)
 
+    # Scan cache table to prevent file resets on Render container restarts
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS latest_scan_cache (
+            id INTEGER PRIMARY KEY,
+            json_data TEXT NOT NULL,
+            updated_at VARCHAR(50) NOT NULL
+        )
+    """)
+
     # Index for fast queries (both SQLite and Postgres)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_records_sym ON history_records (sym)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_records_scan ON history_records (scan_id)")
@@ -194,8 +203,26 @@ def save_scan_to_history(summary):
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, stocks_to_insert)
 
+        # 3. Persist the entire summary JSON as a backup cache
+        import json
+        json_str = json.dumps(summary)
+        updated_at = scanned_at
+        
+        if DATABASE_URL:
+            cursor.execute("""
+                INSERT INTO latest_scan_cache (id, json_data, updated_at)
+                VALUES (1, %s, %s)
+                ON CONFLICT (id) DO UPDATE 
+                SET json_data = EXCLUDED.json_data, updated_at = EXCLUDED.updated_at
+            """, (json_str, updated_at))
+        else:
+            cursor.execute("""
+                INSERT OR REPLACE INTO latest_scan_cache (id, json_data, updated_at)
+                VALUES (1, ?, ?)
+            """, (json_str, updated_at))
+
         conn.commit()
-        print(f"[history_db] Successfully saved scan ID {scan_id} to database history ({len(stocks_to_insert)} records).")
+        print(f"[history_db] Successfully saved scan ID {scan_id} and updated latest_scan_cache ({len(stocks_to_insert)} records).")
         return True
 
     except Exception as e:
@@ -253,6 +280,25 @@ def get_score_history(sym, limit=15):
     except Exception as e:
         print(f"[history_db] ERROR fetching history for {sym}: {e}")
         return []
+    finally:
+        conn.close()
+
+
+def load_latest_scan_cache():
+    """Retrieve the persistently cached scan data from database."""
+    init_db()  # Ensure table exists
+    conn = get_connection()
+    cursor = get_cursor(conn)
+    try:
+        cursor.execute("SELECT json_data FROM latest_scan_cache WHERE id = 1")
+        row = cursor.fetchone()
+        if row:
+            import json
+            return json.loads(row["json_data"])
+        return None
+    except Exception as e:
+        print(f"[history_db] Error loading scan cache from DB: {e}")
+        return None
     finally:
         conn.close()
 

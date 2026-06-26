@@ -196,8 +196,20 @@ async function loadData() {
     try {
         const response = await fetch('/api/data');
         const result = await response.json();
-        const data = result.data;
+        
+        if (result.status !== 'ok' || !result.data) {
+            allStocks = [];
+            document.getElementById('lastScan').innerHTML = 
+                `<i class="fa-regular fa-clock"></i> No scan data found. Run a new scan.`;
+            document.getElementById('totalStocks').textContent = '0';
+            document.getElementById('buyCount').textContent = '0';
+            document.getElementById('watchCount').textContent = '0';
+            document.getElementById('avoidCount').textContent = '0';
+            renderTable();
+            return;
+        }
 
+        const data = result.data;
         allStocks = (data.stocks || []).filter(s => s.status === "ok");
 
         document.getElementById('lastScan').innerHTML =
@@ -943,6 +955,13 @@ function renderTable() {
                 ${stBadge}${pbBadge}${rbBadge}
                 <span class="symbol-name">${stock.name}</span>
                 ${capDot}
+                <!-- Mobile only detail badges to prevent table collapse -->
+                <div class="mobile-only-details">
+                    <span class="mobile-detail-pill sector">${stock.sector}</span>
+                    <span class="mobile-detail-pill rsi">RSI: ${stock.rsi ? stock.rsi.toFixed(0) : "50"}</span>
+                    <span class="mobile-detail-pill target">Tgt: ${formatINR(pos.customTgtPrice)}</span>
+                    <span class="mobile-detail-pill loss">SL: ${formatINR(stock.slPrice)}</span>
+                </div>
             </td>
             <td><span class="sector-column">${stock.sector}</span></td>
             <td>

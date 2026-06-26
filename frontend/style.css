@@ -1347,13 +1347,47 @@ body.light-mode .table-filters-bar {
     }
 }
 
+/* Default / Desktop Toggle states */
+.mobile-only-details {
+    display: none;
+}
+.tab-text-short {
+    display: none;
+}
+.tab-text-long {
+    display: inline;
+}
+
 /* Mobile View (Small Screens) */
 @media (max-width: 640px) {
     .stats-grid {
-        grid-template-columns: 1fr; /* 1x4 stats counters stack */
-        gap: 12px;
+        grid-template-columns: repeat(2, 1fr); /* 2x2 stats counters */
+        gap: 8px;
     }
     
+    .stat-card {
+        padding: 10px;
+        gap: 8px;
+        border-radius: 12px;
+        align-items: center;
+    }
+
+    .stat-icon-wrapper {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+        min-width: 32px;
+    }
+
+    .stat-details h6 {
+        font-size: 0.65rem;
+        margin-bottom: 2px;
+    }
+
+    .stat-details h2 {
+        font-size: 1.25rem;
+    }
+
     .dashboard-header {
         padding: 16px;
     }
@@ -1362,14 +1396,78 @@ body.light-mode .table-filters-bar {
         font-size: 1.5rem;
     }
     
-    /* Hide more details to fit thin screens */
+    /* Toggle tab texts on mobile */
+    .tab-text-long {
+        display: none;
+    }
+    .tab-text-short {
+        display: inline;
+    }
+
+    /* Grid compact layout for filters and controls */
+    .header-actions-group {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        width: 100%;
+    }
+    
+    .search-box-wrapper {
+        grid-column: span 2;
+        width: 100% !important;
+    }
+    
+    .btn-manage-stocks {
+        width: 100% !important;
+        margin: 0 !important;
+    }
+    
+    .table-filters-bar {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        width: 100%;
+        margin-top: 8px;
+    }
+    
+    .table-filters-bar .select-box-wrapper:nth-child(3) {
+        grid-column: span 2;
+    }
+
+    .table-controls {
+        padding: 12px;
+    }
+
+    /* Mobile detail badges */
+    .mobile-only-details {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 6px;
+        width: 100%;
+    }
+    
+    .mobile-detail-pill {
+        font-size: 0.65rem;
+        padding: 1px 5px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text-secondary);
+        font-weight: 500;
+        border: 1px solid var(--border-color);
+        display: inline-block;
+    }
+    
+    /* Hide details to fit thin screens */
     .custom-table th:nth-child(2), .custom-table td:nth-child(2),   /* Sector */
+    .custom-table th:nth-child(3), .custom-table td:nth-child(3),   /* Score */
     .custom-table th:nth-child(4), .custom-table td:nth-child(4),   /* RSI */
     .custom-table th:nth-child(5), .custom-table td:nth-child(5),   /* Vol Ratio */
     .custom-table th:nth-child(6), .custom-table td:nth-child(6),   /* RS Index */
     .custom-table th:nth-child(9), .custom-table td:nth-child(9),   /* Shares */
     .custom-table th:nth-child(10), .custom-table td:nth-child(10), /* Capital Used */
-    .custom-table th:nth-child(11), .custom-table td:nth-child(11)  /* Max Loss */ {
+    .custom-table th:nth-child(11), .custom-table td:nth-child(11), /* Max Loss */
+    .custom-table th:nth-child(12), .custom-table td:nth-child(12)  /* Target */ {
         display: none;
     }
     
