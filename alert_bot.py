@@ -48,15 +48,15 @@ def load_settings():
         except Exception as e:
             print(f"[alert_bot] Error loading settings: {e}")
 
-    # Fallback to Environment Variables only if not saved in settings.json
-    if "telegram_token" in saved:
+    # Fallback to Environment Variables if not saved or empty in settings.json
+    if saved.get("telegram_token"):
         settings["telegram_token"] = saved["telegram_token"]
     else:
         env_token = os.environ.get("TELEGRAM_TOKEN")
         if env_token:
             settings["telegram_token"] = env_token.strip()
 
-    if "telegram_chat_id" in saved:
+    if saved.get("telegram_chat_id"):
         settings["telegram_chat_id"] = saved["telegram_chat_id"]
     else:
         env_chat_id = os.environ.get("TELEGRAM_CHAT_ID")

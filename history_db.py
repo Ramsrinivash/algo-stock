@@ -304,6 +304,31 @@ def load_latest_scan_cache():
         conn.close()
 
 
+def has_scan_run_today():
+    """Checks if a scan has already been recorded for the current day in IST."""
+    from datetime import datetime, timezone, timedelta
+    utc_now = datetime.now(timezone.utc)
+    ist_now = utc_now + timedelta(hours=5, minutes=30)
+    current_date = ist_now.strftime("%Y-%m-%d")
+    
+    conn = get_connection()
+    cursor = get_cursor(conn)
+    try:
+        if DATABASE_URL:
+            # PostgreSQL
+            cursor.execute("SELECT id FROM scans WHERE CAST(scanned_at AS DATE) = CAST(%s AS DATE)", (current_date,))
+        else:
+            # SQLite
+            cursor.execute("SELECT id FROM scans WHERE DATE(scanned_at) = DATE(?)", (current_date,))
+        row = cursor.fetchone()
+        return row is not None
+    except Exception as e:
+        print(f"[history_db] Error checking if scan run today: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     print("[history_db] Initializing database...")
     init_db()

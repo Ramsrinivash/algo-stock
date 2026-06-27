@@ -164,9 +164,9 @@ def keep_awake_and_schedule_loop():
                 resp = requests.get(f"{external_url}/api/status", timeout=15)
                 print(f"[scheduler] Keep-awake ping response status: {resp.status_code}", flush=True)
                 
-            # 2. Check if it's 5:00 PM IST (17:00 IST) for daily scan
+            # 2. Check if it's 5:00 PM IST (17:00 IST) or later for daily scan
             ist_now = get_ist_time()
-            if ist_now.hour == 17 and ist_now.minute == 0:
+            if ist_now.hour >= 17:
                 current_date = ist_now.strftime("%Y-%m-%d")
                 
                 # File locking to prevent double execution under multi-worker gunicorn deployments
@@ -181,6 +181,18 @@ def keep_awake_and_schedule_loop():
                     except Exception:
                         pass
                         
+                # Check database as a persistent backup if local lock is missing
+                if not already_run:
+                    try:
+                        import history_db
+                        if history_db.has_scan_run_today():
+                            already_run = True
+                            # Update local lock to prevent database queries in subsequent loops
+                            with open(lock_file, "w") as lf:
+                                lf.write(current_date)
+                    except Exception as db_err:
+                        print(f"[scheduler] DB check error: {db_err}", flush=True)
+                        
                 if not already_run:
                     try:
                         with open(lock_file, "w") as lf:
@@ -188,7 +200,7 @@ def keep_awake_and_schedule_loop():
                     except Exception as le:
                         print(f"[scheduler] Lock file write error: {le}", flush=True)
                         
-                    print(f"[scheduler] Starting daily automated scan at 5:00 PM IST for date: {current_date}", flush=True)
+                    print(f"[scheduler] Starting daily automated scan (after 5:00 PM IST) for date: {current_date}", flush=True)
                     
                     import stock_manager
                     stocks_to_scan = stock_manager.get_all_stocks(STOCKS)
