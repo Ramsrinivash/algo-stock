@@ -27,7 +27,7 @@
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from stocks     import STOCKS, NIFTY_SYM
 from fetcher    import fetch_ohlcv, fetch_nifty
@@ -348,8 +348,12 @@ def build_summary(results, nifty):
     nifty["mood"]   = mood
     nifty["advice"] = advice
 
+    utc_now = datetime.now(timezone.utc)
+    ist_now = utc_now + timedelta(hours=5, minutes=30)
+    scanned_at_str = ist_now.strftime("%Y-%m-%d %H:%M:%S")
+
     return {
-        "scanned_at":      datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "scanned_at":      scanned_at_str,
         "total":           len(results),
         "ok":              len(ok_stocks),
         "errors":          len(results) - len(ok_stocks),
