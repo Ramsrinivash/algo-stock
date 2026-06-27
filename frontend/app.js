@@ -1582,6 +1582,9 @@ async function loadSettingsIntoModal() {
         document.getElementById('alertsEnabled').checked   = !!s.alerts_enabled;
         document.getElementById('alertOnScan').checked     = s.alert_on_scan !== false;
         document.getElementById('alertLimit').value        = s.alert_limit || 10;
+        if (document.getElementById('scanHour')) {
+            document.getElementById('scanHour').value      = s.scan_hour !== undefined ? s.scan_hour : 17;
+        }
         const scoreSlider = document.getElementById('alertMinScore');
         const scoreVal    = document.getElementById('alertMinScoreVal');
         scoreSlider.value = s.alert_min_score || 70;
@@ -1602,6 +1605,8 @@ async function saveSettings() {
     const onScan  = document.getElementById('alertOnScan').checked;
     const minScore= parseInt(document.getElementById('alertMinScore').value, 10);
     const limit   = parseInt(document.getElementById('alertLimit').value, 10) || 10;
+    const scanHourEl = document.getElementById('scanHour');
+    const scanHour = scanHourEl ? parseInt(scanHourEl.value, 10) : 17;
 
     const payload = {
         alerts_enabled:   enabled,
@@ -1609,6 +1614,7 @@ async function saveSettings() {
         alert_min_score:  minScore,
         alert_limit:      limit,
         telegram_chat_id: chatId,
+        scan_hour:        scanHour,
     };
     if (token && !token.includes('•')) payload.telegram_token = token;
 

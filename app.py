@@ -164,9 +164,18 @@ def keep_awake_and_schedule_loop():
                 resp = requests.get(f"{external_url}/api/status", timeout=15)
                 print(f"[scheduler] Keep-awake ping response status: {resp.status_code}", flush=True)
                 
-            # 2. Check if it's 5:00 PM IST (17:00 IST) or later for daily scan
+            # Load settings dynamically to fetch target scan hour
+            try:
+                import alert_bot
+                settings = alert_bot.load_settings()
+                scan_hour = settings.get("scan_hour", 17)
+                scan_hour = int(scan_hour)
+            except Exception:
+                scan_hour = 17
+
+            # 2. Check if it's the daily scan hour or later for daily scan
             ist_now = get_ist_time()
-            if ist_now.hour >= 17:
+            if ist_now.hour >= scan_hour:
                 current_date = ist_now.strftime("%Y-%m-%d")
                 
                 # File locking to prevent double execution under multi-worker gunicorn deployments

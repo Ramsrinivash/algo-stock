@@ -33,6 +33,7 @@ DEFAULT_SETTINGS = {
     "alert_min_score":  60,   # Recalibrated: BUY threshold is now 60 (new scoring system)
     "alert_limit":      10,
     "alert_signals":    ["BUY", "STRONG BUY"],
+    "scan_hour":        17,
 }
 
 
