@@ -727,13 +727,17 @@ def calc_all(df, df_nifty=None):
     # ATR
     atr_val, atr_pct = calc_atr(df, 14)
 
-    # Derived values — SL capped at 7% max to ensure usable risk:reward
-    sl_pct_raw = atr_pct * 1.5
-    sl_pct     = round(min(sl_pct_raw, 7.0), 2)   # never wider than 7%
-    sl_price   = round(price * (1 - sl_pct / 100), 2)
-    sl_points  = price - sl_price
-    tgt2       = round(price + sl_points * 2, 2)
-    tgt3       = round(price + sl_points * 3, 2)
+    # ── R-Multiple Formula: 1R = 2 × ATR (industry standard) ─
+    # This is the corrected quant formula — risk per share = 2×ATR
+    # All targets are expressed as multiples of R for consistent R:R
+    R          = 2.0 * atr_val                         # 1R = risk per share
+    sl_price   = round(price - R, 2)                   # Entry - 1R
+    sl_pct     = round(((price - sl_price) / price) * 100, 2) if price > 0 else 0.0
+    sl_points  = R
+    tgt1       = round(price + (1.0 * R), 2)           # +1R  → R:R 1:1.0
+    tgt2       = round(price + (1.5 * R), 2)           # +1.5R → R:R 1:1.5
+    tgt3       = round(price + (2.5 * R), 2)           # +2.5R → R:R 1:2.5
+    rr_val     = round((tgt2 - price) / R, 1) if R > 0 else 0.0   # always ~1.5
 
     ema_bull_stack = bool(e9 > e21 > e50)
 
@@ -773,27 +777,35 @@ def calc_all(df, df_nifty=None):
         and price > e50              # above key EMA
     )
 
-    # Supertrend (10, 3)
+    # ── Supertrend (10, 3) ───────────────────────────────────
     st_val, st_dir = calc_supertrend(df, 10, 3)
 
-    # VWAP (20)
+    # ── Bollinger Bands (20, 2) ──────────────────────────────
+    bb_data = calc_bollinger(df)
+
+    # BB Position: 0% = at lower band, 100% = at upper band
+    bb_range = bb_data["bbUpper"] - bb_data["bbLower"]
+    if bb_range > 0:
+        bb_pct = round(((price - bb_data["bbLower"]) / bb_range) * 100, 1)
+        bb_pct = max(0.0, min(100.0, bb_pct))
+    else:
+        bb_pct = 50.0
+
+    # ── VWAP (20) ────────────────────────────────────────────
     vwap_series = calc_vwap(df, 20)
     vwap_val = round(float(vwap_series.iloc[-1]), 2)
     close_above_vwap = bool(price > vwap_val)
 
-    # CPR & Pivot
+    # ── CPR & Pivot ───────────────────────────────────────────
     cpr_data = calc_pivot_cpr(df)
 
-    # MACD (12, 26, 9)
+    # ── MACD (12, 26, 9) ─────────────────────────────────────
     macd_data = calc_macd(close)
 
-    # Bollinger Bands (20, 2)
-    bb_data = calc_bollinger(df)
-
-    # ADX (14)
+    # ── ADX (14) ─────────────────────────────────────────────
     adx_data = calc_adx(df)
 
-    # Volatility Contraction Pattern (VCP) & Volume Dry-Up (VDU)
+    # ── VCP (Volatility Contraction Pattern) ─────────────────
     vcp_setup = calc_vcp_vdu(df)
 
     # Relative Strength vs Nifty 50
@@ -818,6 +830,7 @@ def calc_all(df, df_nifty=None):
         **macd_data,
         # Bollinger Bands (20, 2)
         **bb_data,
+        "bbPct":            bb_pct,         # price position in BB range 0-100%
         # ADX (14)
         **adx_data,
         # EMA values
@@ -839,20 +852,26 @@ def calc_all(df, df_nifty=None):
         # ATR
         "atr":              atr_val,
         "atrPct":           atr_pct,
-        # Trade levels — pre-calculated
-        "slPrice":          sl_price,
+        # R-Multiple Trade levels (1R = 2×ATR)
+        "R":                round(R, 2),      # 1R = risk per share
+        "slPrice":          sl_price,         # Entry - 1R
         "slPct":            sl_pct,
-        "tgt2":             tgt2,
-        "tgt3":             tgt3,
+        "tgt1":             tgt1,             # Entry + 1R   (R:R 1:1)
+        "tgt2":             tgt2,             # Entry + 1.5R (R:R 1:1.5)
+        "tgt3":             tgt3,             # Entry + 2.5R (R:R 1:2.5)
+        "rr":               rr_val,           # R:R ratio (vs T2, always ~1.5)
+        # EMA Distance metrics
+        "distEma50":        round(((price - e50) / e50) * 100, 2) if e50 > 0 else 0.0,
+        "distEma20":        round(((price - e20) / e20) * 100, 2) if e20 > 0 else 0.0,
         # Trend
         "trendDays":        calc_trend_days(df),
         "marketTrend":      market_trend,
         "higherHighsLows":  calc_higher_highs_lows(df),
-        # NEW: Pullback Buy Zone
+        # Pullback Buy Zone
         "pullbackBuy":      pullback_buy,
         "nearEma20":        near_ema20,
         "nearEma50":        near_ema50,
-        # NEW: Resistance Breakout
+        # Resistance Breakout
         "breakoutResistance":  breakout_resistance,
         "prevResistance20d":   prev_resistance,
         # Price data (includes gapUp, gapDown, near52wHigh, breakout52w, volRatio)
