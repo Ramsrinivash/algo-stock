@@ -280,12 +280,14 @@ def api_scan():
     })
 
 
-# ── API: Scan Status ──────────────────────────────────────────
+# ── API: Scan Status ───────────────────────────────────────────────
 @app.route("/api/scan/status")
 def api_scan_status():
-    """Return the progress status of the background scan."""
+    """Return the progress status of the background scan (thread-safe read)."""
     global scan_progress
-    return jsonify(scan_progress)
+    with scan_lock:                      # guard against torn reads from background thread
+        progress_copy = dict(scan_progress)
+    return jsonify(progress_copy)
 
 
 # ── API: Get Last Scan Data ───────────────────────────────────
@@ -800,6 +802,7 @@ def api_sector_analysis():
 @app.route("/api/performance")
 def api_performance():
     import history_db
+    history_db.init_db()              # ensure tables exist (fresh deploy safety)
     conn = history_db.get_connection()
     cursor = history_db.get_cursor(conn)
     
