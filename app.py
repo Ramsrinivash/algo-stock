@@ -57,7 +57,7 @@ def require_password(f):
     def decorated_function(*args, **kwargs):
         import alert_bot
         s = alert_bot.load_settings()
-        correct_pwd = s.get("settings_password", "5001")
+        correct_pwd = os.environ.get("SCREENER_PASSCODE") or s.get("settings_password", "5001")
         if request.headers.get("X-Api-Password") != correct_pwd:
             return jsonify({"status": "error", "message": "Unauthorized: Password incorrect or missing."}), 401
         return f(*args, **kwargs)
@@ -473,7 +473,7 @@ def api_verify_password():
     """Verify passcode on the backend."""
     import alert_bot
     s = alert_bot.load_settings()
-    correct_pwd = s.get("settings_password", "5001")
+    correct_pwd = os.environ.get("SCREENER_PASSCODE") or s.get("settings_password", "5001")
     
     data = request.json or {}
     pwd = data.get("password", "")
@@ -802,9 +802,16 @@ def api_sector_analysis():
 @app.route("/api/performance")
 def api_performance():
     import history_db
-    history_db.init_db()              # ensure tables exist (fresh deploy safety)
-    conn = history_db.get_connection()
-    cursor = history_db.get_cursor(conn)
+    try:
+        history_db.init_db()              # ensure tables exist (fresh deploy safety)
+        conn = history_db.get_connection()
+        cursor = history_db.get_cursor(conn)
+    except Exception as db_err:
+        print(f"[app] Database connection/init error: {db_err}")
+        return jsonify({
+            "status": "error",
+            "message": f"Database connection or initialization failed: {db_err}"
+        }), 500
     
     try:
         # 1. Fetch all scans sorted by date descending

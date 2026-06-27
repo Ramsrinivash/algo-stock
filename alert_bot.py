@@ -389,7 +389,6 @@ T3 ₹{tgt3:,.2f} (+{tgt3_pct:.1f}%)  → 1:2.5
 
 Type:
 * {"Pullback" if is_pullback else "Breakout" if is_breakout else "Trend Following"}
-* Trend Following
 
 Reasons:
 {reasons_str}
