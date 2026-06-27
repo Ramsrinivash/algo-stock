@@ -88,7 +88,6 @@ def score_stock(s):
     rsi = s.get("rsi", 50)
     if 52 <= rsi <= 65:
         sc += WEIGHTS["rsi_ideal"]          # +20 — perfect momentum zone
-        signals_rsi = "RSI_IDEAL"
     elif 65 < rsi <= 70:
         sc += WEIGHTS["rsi_ok"]             # +12 — extended but still ok
     elif 45 <= rsi < 52:

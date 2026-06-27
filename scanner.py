@@ -209,6 +209,8 @@ def scan_one(sym, yahoo_sym, name, sector, capital=100000, df_nifty=None):
     stock["maxLoss"]       = analysis["maxLoss"]
     stock["profit2"]       = analysis["profit2"]
     stock["profit3"]       = analysis["profit3"]
+    stock["holdDuration"]  = analysis["holdDuration"]
+    stock["rrGatePassed"]  = analysis["rrGatePassed"]
 
     return clean_nan(stock)
 
@@ -474,8 +476,12 @@ def run_full_scan(stocks_list=None, capital=100000, verbose=True, progress_callb
                 print(f"  SL     : Rs.{s['slPrice']:,.2f}  "
                       f"Shares: {s['shares']}  "
                       f"Capital: Rs.{s['capitalNeeded']:,.2f}")
-                print(f"  Target : Rs.{s['tgt2']:,.2f} (2:1)  "
-                      f"Rs.{s['tgt3']:,.2f} (3:1)")
+                print(f"  T1: Rs.{s.get('tgt1',0):,.2f} (+1R)  "
+                      f"T2: Rs.{s.get('tgt2',0):,.2f} (+1.5R)  "
+                      f"T3: Rs.{s.get('tgt3',0):,.2f} (+2.5R)")
+                hold = s.get('holdDuration', '')
+                if hold:
+                    print(f"  Hold   : {hold}")
 
         print()
         print(f"  Saved -> {OUTPUT_FILE}")

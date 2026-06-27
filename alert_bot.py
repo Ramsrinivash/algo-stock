@@ -30,7 +30,7 @@ DEFAULT_SETTINGS = {
     "telegram_chat_id": "",
     "alerts_enabled":   False,
     "alert_on_scan":    True,
-    "alert_min_score":  70,
+    "alert_min_score":  60,   # Recalibrated: BUY threshold is now 60 (new scoring system)
     "alert_limit":      10,
     "alert_signals":    ["BUY", "STRONG BUY"],
 }
@@ -217,30 +217,37 @@ def format_single_recommendation(s, scanned_at, market_mood):
     price = s.get("price", 0.0)
     sl_price = s.get("slPrice", 0.0)
     sl_points = max(price - sl_price, 0.01)
-    
+
     sl_pct = s.get("slPct", 0.0)
     if not sl_pct and price > 0:
         sl_pct = (sl_points / price) * 100
 
-    tgt1 = price + sl_points
-    tgt2 = s.get("tgt2") or (price + sl_points * 2)
-    tgt3 = s.get("tgt3") or (price + sl_points * 3)
+    # R-Multiple targets (use pre-calculated values, fallback to R-Multiple ratios)
+    R      = s.get("R", sl_points)           # 1R = 2×ATR (stored by indicators.py)
+    tgt1   = s.get("tgt1", round(price + 1.0 * R, 2))   # +1R
+    tgt2   = s.get("tgt2", round(price + 1.5 * R, 2))   # +1.5R
+    tgt3   = s.get("tgt3", round(price + 2.5 * R, 2))   # +2.5R
 
-    # Risk reward (using default target pct of 10%)
-    rr = 10.0 / sl_pct if sl_pct > 0 else 2.0
+    # Gain percentages for display (actual % from current price)
+    tgt1_pct = round(((tgt1 - price) / price) * 100, 1) if price > 0 else 0
+    tgt2_pct = round(((tgt2 - price) / price) * 100, 1) if price > 0 else 0
+    tgt3_pct = round(((tgt3 - price) / price) * 100, 1) if price > 0 else 0
 
-    # Rating & Verdict based on score
+    # R:R ratio — use pre-calculated value from scanner (always ~1.5 with R-Multiple formula)
+    rr = s.get("rr", round((tgt2 - price) / R, 1) if R > 0 else 1.5)
+
+    # Star rating based on new scoring system (max ~110)
     score = s.get("score", 0)
-    if score >= 130:
+    if score >= 95:
         stars = "★★★★★"
         verdict = "Strong Buy (Exceptional Setup)"
-    elif score >= 120:
+    elif score >= 80:
         stars = "★★★★☆"
         verdict = "Strong Buy"
-    elif score >= 110:
+    elif score >= 65:
         stars = "★★★☆☆"
         verdict = "Buy"
-    elif score >= 100:
+    elif score >= 50:
         stars = "★★☆☆☆"
         verdict = "Watch Setup"
     else:
@@ -367,9 +374,9 @@ Rating: {stars}
 Risk: -{sl_pct:.1f}%
 
 🎯 <b>Targets</b>
-T1 ₹{tgt1:,.2f} (+{sl_pct:.1f}%)
-T2 ₹{tgt2:,.2f} (+{sl_pct*2:.1f}%)
-T3 ₹{tgt3:,.2f} (+{sl_pct*3:.1f}%)
+T1 ₹{tgt1:,.2f} (+{tgt1_pct:.1f}%)  → 1:1.0
+T2 ₹{tgt2:,.2f} (+{tgt2_pct:.1f}%)  → 1:1.5
+T3 ₹{tgt3:,.2f} (+{tgt3_pct:.1f}%)  → 1:2.5
 
 ⚖️ <b>Risk : Reward</b>
 1 : {rr:.1f}
