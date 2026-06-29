@@ -1329,6 +1329,147 @@ function closeStocksModal() {
 
 
 // ═══════════════════════════════════════════════════════════════
+//  WATCHLIST & PRICE ALERTS
+// ═══════════════════════════════════════════════════════════════
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.toString()
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+async function loadWatchlist() {
+    try {
+        const res = await fetch('/api/watchlist', {
+            headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        if (data.status !== "ok") return;
+
+        const tableBody = document.getElementById('watchlistTableBody');
+        tableBody.innerHTML = '';
+
+        if (!data.alerts || data.alerts.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted" style="padding: 20px;">No price alerts configured yet.</td></tr>';
+            return;
+        }
+
+        data.alerts.forEach(alert => {
+            const tr = document.createElement('tr');
+            
+            let addedDate = '—';
+            if (alert.created_at) {
+                addedDate = alert.created_at.split('.')[0].replace('T', ' ');
+            }
+
+            const statusHtml = alert.is_active === 1 
+                ? '<span class="badge-active">Active</span>' 
+                : `<span class="badge-triggered" title="Triggered at: ${alert.triggered_at || ''}">Triggered</span>`;
+
+            tr.innerHTML = `
+                <td><strong>${escapeHtml(alert.sym)}</strong><br><small class="text-secondary">${escapeHtml(alert.yahoo)}</small></td>
+                <td>₹${parseFloat(alert.target_price).toFixed(2)}</td>
+                <td><span class="trend-badge ${alert.condition === 'ABOVE' ? 'bullish' : 'bearish'}">${escapeHtml(alert.condition)}</span></td>
+                <td>${statusHtml}</td>
+                <td><small>${addedDate}</small></td>
+                <td class="text-center">
+                    <button class="btn-delete-stock" onclick="deleteWatchlistAlert(${alert.id})">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    } catch (err) {
+        console.error("Error loading watchlist:", err);
+    }
+}
+
+async function addWatchlistAlert(e) {
+    e.preventDefault();
+    const sym = document.getElementById('watchSym').value.trim().toUpperCase();
+    let yahoo = document.getElementById('watchYahoo').value.trim().toUpperCase();
+    const targetPrice = document.getElementById('watchTargetPrice').value.trim();
+    const condition = document.getElementById('watchCondition').value;
+
+    if (!sym || !targetPrice) return;
+
+    if (!yahoo) {
+        yahoo = sym + ".NS";
+    } else if (!yahoo.includes('.') && !yahoo.endsWith('.NS')) {
+        yahoo = yahoo + ".NS";
+    }
+
+    try {
+        const res = await fetch('/api/watchlist', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
+            body: JSON.stringify({
+                sym,
+                yahoo,
+                target_price: targetPrice,
+                condition
+            })
+        });
+        const result = await res.json();
+
+        if (result.status === "ok") {
+            document.getElementById('addWatchlistForm').reset();
+            showToast(result.message || 'Price alert added!', 'success');
+            await loadWatchlist();
+        } else {
+            alert("Error: " + (result.message || "Failed to add alert"));
+        }
+    } catch (err) {
+        console.error("Error adding watchlist alert:", err);
+        alert("Failed to connect to server.");
+    }
+}
+
+async function deleteWatchlistAlert(alertId) {
+    if (!confirm("Are you sure you want to delete this price alert?")) return;
+
+    try {
+        const res = await fetch(`/api/watchlist/${alertId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+        const result = await res.json();
+
+        if (result.status === "ok") {
+            showToast('Alert deleted successfully.', 'success');
+            await loadWatchlist();
+        } else {
+            alert("Error: " + (result.message || "Failed to delete alert"));
+        }
+    } catch (err) {
+        console.error("Error deleting alert:", err);
+        alert("Failed to connect to server.");
+    }
+}
+
+function openWatchlistModal() {
+    checkPasswordProtection(() => {
+        document.getElementById('watchlistModal').style.display = 'flex';
+        loadWatchlist();
+    });
+}
+
+function closeWatchlistModal() {
+    document.getElementById('watchlistModal').style.display = 'none';
+}
+
+// Bind to window for inline onclick execution
+window.deleteWatchlistAlert = deleteWatchlistAlert;
+
+
+// ═══════════════════════════════════════════════════════════════
 //  EVENT LISTENERS
 // ═══════════════════════════════════════════════════════════════
 document.getElementById('searchBox').addEventListener('keyup', renderTable);
@@ -1498,6 +1639,14 @@ document.getElementById('stocksModal').addEventListener('click', (e) => {
 });
 document.getElementById('addStockForm').addEventListener('submit', addCustomStock);
 
+// Watchlist Modal bindings
+document.getElementById('btnWatchlist').addEventListener('click', openWatchlistModal);
+document.getElementById('watchlistModalClose').addEventListener('click', closeWatchlistModal);
+document.getElementById('watchlistModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('watchlistModal')) closeWatchlistModal();
+});
+document.getElementById('addWatchlistForm').addEventListener('submit', addWatchlistAlert);
+
 // Details tabs bindings
 document.getElementById('btnTabChart').addEventListener('click', () => {
     document.getElementById('btnTabChart').classList.add('active');
@@ -1540,6 +1689,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         closeModal();
         closeStocksModal();
+        closeWatchlistModal();
         closeSettingsModal();
     }
 });

@@ -109,6 +109,34 @@ def init_db():
         )
     """)
 
+    # Watchlist Alerts table
+    if DATABASE_URL:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS watchlist_alerts (
+                id SERIAL PRIMARY KEY,
+                sym VARCHAR(20) NOT NULL,
+                yahoo VARCHAR(20) NOT NULL,
+                target_price REAL NOT NULL,
+                condition VARCHAR(10) NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                triggered_at TIMESTAMP NULL
+            )
+        """)
+    else:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS watchlist_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sym TEXT NOT NULL,
+                yahoo TEXT NOT NULL,
+                target_price REAL NOT NULL,
+                condition TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                triggered_at TEXT NULL
+            )
+        """)
+
     # Index for fast queries (both SQLite and Postgres)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_records_sym ON history_records (sym)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_records_scan ON history_records (scan_id)")
@@ -324,6 +352,109 @@ def has_scan_run_today():
         return row is not None
     except Exception as e:
         print(f"[history_db] Error checking if scan run today: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def add_watchlist_alert(sym, yahoo, target_price, condition):
+    """Add a new alert to the watchlist."""
+    init_db()
+    conn = get_connection()
+    cursor = get_cursor(conn)
+    try:
+        if DATABASE_URL:
+            cursor.execute("""
+                INSERT INTO watchlist_alerts (sym, yahoo, target_price, condition)
+                VALUES (%s, %s, %s, %s)
+            """, (sym.upper(), yahoo, float(target_price), condition.upper()))
+        else:
+            cursor.execute("""
+                INSERT INTO watchlist_alerts (sym, yahoo, target_price, condition)
+                VALUES (?, ?, ?, ?)
+            """, (sym.upper(), yahoo, float(target_price), condition.upper()))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[history_db] Error adding watchlist alert: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_watchlist_alerts():
+    """Get all watchlist alerts (both active and triggered)."""
+    init_db()
+    conn = get_connection()
+    cursor = get_cursor(conn)
+    try:
+        cursor.execute("SELECT * FROM watchlist_alerts ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            result.append(dict(r))
+        return result
+    except Exception as e:
+        print(f"[history_db] Error fetching watchlist alerts: {e}")
+        return []
+    finally:
+        conn.close()
+
+def delete_watchlist_alert(alert_id):
+    """Delete a watchlist alert by ID."""
+    conn = get_connection()
+    cursor = get_cursor(conn)
+    try:
+        if DATABASE_URL:
+            cursor.execute("DELETE FROM watchlist_alerts WHERE id = %s", (alert_id,))
+        else:
+            cursor.execute("DELETE FROM watchlist_alerts WHERE id = ?", (alert_id,))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[history_db] Error deleting watchlist alert: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_active_watchlist_alerts():
+    """Get only active watchlist alerts."""
+    init_db()
+    conn = get_connection()
+    cursor = get_cursor(conn)
+    try:
+        cursor.execute("SELECT * FROM watchlist_alerts WHERE is_active = 1")
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            result.append(dict(r))
+        return result
+    except Exception as e:
+        print(f"[history_db] Error fetching active alerts: {e}")
+        return []
+    finally:
+        conn.close()
+
+def mark_watchlist_alert_triggered(alert_id):
+    """Mark a watchlist alert as triggered."""
+    conn = get_connection()
+    cursor = get_cursor(conn)
+    try:
+        if DATABASE_URL:
+            cursor.execute("""
+                UPDATE watchlist_alerts 
+                SET is_active = 0, triggered_at = CURRENT_TIMESTAMP 
+                WHERE id = %s
+            """, (alert_id,))
+        else:
+            cursor.execute("""
+                UPDATE watchlist_alerts 
+                SET is_active = 0, triggered_at = datetime('now', 'localtime') 
+                WHERE id = ?
+            """, (alert_id,))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[history_db] Error triggering watchlist alert: {e}")
         return False
     finally:
         conn.close()

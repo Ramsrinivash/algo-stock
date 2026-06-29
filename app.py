@@ -750,6 +750,154 @@ def api_settings_test():
     return jsonify({"status": "ok" if ok else "error", "message": message})
 
 
+# ── API: Watchlist & Price Alerts CRUD ────────────────────────
+@app.route("/api/watchlist")
+@require_password
+def api_get_watchlist():
+    """Get all watchlist alerts."""
+    import history_db
+    alerts = history_db.get_watchlist_alerts()
+    return jsonify({"status": "ok", "alerts": alerts})
+
+
+@app.route("/api/watchlist", methods=["POST"])
+@require_password
+def api_add_watchlist():
+    """Add a new alert to the watchlist."""
+    import history_db
+    data = request.json or {}
+    sym = data.get("sym", "").strip().upper()
+    yahoo = data.get("yahoo", "").strip().upper()
+    target_price = data.get("target_price")
+    condition = data.get("condition", "ABOVE").strip().upper()
+
+    if not sym:
+        return jsonify({"status": "error", "message": "Symbol is required."}), 400
+    if not target_price:
+        return jsonify({"status": "error", "message": "Target price is required."}), 400
+    try:
+        target_price = float(target_price)
+    except ValueError:
+        return jsonify({"status": "error", "message": "Target price must be a number."}), 400
+
+    if not yahoo:
+        yahoo = sym + ".NS"
+    elif not yahoo.endswith(".NS") and "." not in yahoo:
+        yahoo = yahoo + ".NS"
+
+    if condition not in ["ABOVE", "BELOW"]:
+        return jsonify({"status": "error", "message": "Condition must be ABOVE or BELOW."}), 400
+
+    ok = history_db.add_watchlist_alert(sym, yahoo, target_price, condition)
+    if ok:
+        return jsonify({"status": "ok", "message": f"Alert for {sym} added successfully."})
+    return jsonify({"status": "error", "message": "Failed to add alert to database."}), 500
+
+
+@app.route("/api/watchlist/<int:alert_id>", methods=["DELETE"])
+@require_password
+def api_delete_watchlist(alert_id):
+    """Delete an alert from the watchlist."""
+    import history_db
+    ok = history_db.delete_watchlist_alert(alert_id)
+    if ok:
+        return jsonify({"status": "ok", "message": "Alert deleted successfully."})
+    return jsonify({"status": "error", "message": "Failed to delete alert."}), 500
+
+
+@app.route("/api/check-alerts")
+@require_password
+def api_check_alerts():
+    """
+    Check all active price alerts.
+    Fetches the live price for active alert symbols.
+    Sends Telegram messages for triggered alerts and disables them.
+    """
+    import history_db
+    import fetcher
+    import alert_bot
+
+    active_alerts = history_db.get_active_watchlist_alerts()
+    if not active_alerts:
+        return jsonify({
+            "status": "ok",
+            "message": "No active alerts to check.",
+            "checked": 0,
+            "triggered": 0
+        })
+
+    # Load settings to get Telegram config
+    settings = alert_bot.load_settings()
+    token = settings.get("telegram_token", "").strip()
+    chat_id = settings.get("telegram_chat_id", "").strip()
+
+    if not token or not chat_id:
+        print("[app] Telegram alerts not configured. Checked alerts locally only.")
+
+    checked_count = 0
+    triggered_count = 0
+    triggered_list = []
+
+    price_cache = {}
+
+    for alert in active_alerts:
+        yahoo_sym = alert["yahoo"]
+        sym = alert["sym"]
+        target = float(alert["target_price"])
+        cond = alert["condition"]
+        alert_id = alert["id"]
+
+        if yahoo_sym not in price_cache:
+            live_price = fetcher.fetch_live_price(yahoo_sym)
+            if live_price is not None:
+                price_cache[yahoo_sym] = live_price
+                import time
+                time.sleep(0.2)
+        else:
+            live_price = price_cache[yahoo_sym]
+
+        if live_price is None:
+            print(f"[app] Failed to fetch live price for {yahoo_sym}")
+            continue
+
+        checked_count += 1
+        is_triggered = False
+        if cond == "ABOVE" and live_price >= target:
+            is_triggered = True
+        elif cond == "BELOW" and live_price <= target:
+            is_triggered = True
+
+        if is_triggered:
+            triggered_count += 1
+            triggered_list.append(f"{sym} ({live_price} vs {cond} {target})")
+
+            # 1. Update database first
+            history_db.mark_watchlist_alert_triggered(alert_id)
+
+            # 2. Send Telegram notification
+            if token and chat_id:
+                ist_now = get_ist_time()
+                formatted_time = ist_now.strftime("%d %b %Y  %I:%M %p IST")
+                
+                alert_text = (
+                    "🚨 <b>Finrio AI — Price Alert Triggered!</b> 🚨\n\n"
+                    f"📈 Stock: <b>{sym}</b>\n"
+                    f"🎯 Target Price: <b>₹{target:,.2f}</b> ({cond})\n"
+                    f"💵 Live Price: <b>₹{live_price:,.2f}</b>\n"
+                    f"⏰ Time: {formatted_time}\n\n"
+                    "👉 Visit <a href='https://finrio-ai.onrender.com'>Finrio AI Dashboard</a>"
+                )
+                alert_bot.send_telegram(token, chat_id, alert_text)
+
+    return jsonify({
+        "status": "ok",
+        "message": f"Checked {checked_count} active alerts. Triggered {triggered_count} alerts.",
+        "checked": checked_count,
+        "triggered": triggered_count,
+        "details": triggered_list
+    })
+
+
 # ── API: Sector Rotation Heatmap ──────────────────────────────
 @app.route("/api/sector-analysis")
 def api_sector_analysis():

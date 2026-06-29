@@ -1249,6 +1249,31 @@ body.light-mode .table-filters-bar {
     border-color: rgba(244, 63, 94, 0.4);
 }
 
+/* Watchlist Status Badges */
+.badge-active {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
+.badge-triggered {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    display: inline-block;
+}
+
 /* ==========================================================================
    Details Modal Tabs and Charts Style
    ========================================================================== */

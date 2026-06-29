@@ -155,6 +155,22 @@ def fetch_all_stocks(stocks_list, period="1y", verbose=True):
     return results
 
 
+def fetch_live_price(yahoo_sym):
+    """
+    Fetch the latest live price of a stock from Yahoo Finance.
+    Returns the price (float) or None if fetch fails.
+    """
+    try:
+        # Fetching with period="1d" is extremely fast
+        df = yf.Ticker(yahoo_sym).history(period="1d")
+        if df is not None and not df.empty:
+            return round(float(df["Close"].iloc[-1]), 2)
+        return None
+    except Exception as e:
+        print(f"[fetcher] Error fetching live price for {yahoo_sym}: {e}")
+        return None
+
+
 # ── TEST ──────────────────────────────────────────────────────
 if __name__ == "__main__":
     from stocks import STOCKS, NIFTY_SYM
