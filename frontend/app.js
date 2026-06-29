@@ -21,11 +21,27 @@ let userTargetPct = 10;     // default 10% target goal percentage
 
 // ── AUTHENTICATION HELPERS ──────────────────────────────────────
 let pendingAuthAction = null;
+let activeWatchlist = [];
 
 function getAuthHeaders() {
     return {
         'X-Api-Password': sessionStorage.getItem('settings_password') || ''
     };
+}
+
+async function fetchActiveWatchlistOnly() {
+    if (!sessionStorage.getItem('settings_password')) return;
+    try {
+        const res = await fetch('/api/watchlist', {
+            headers: getAuthHeaders()
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+            activeWatchlist = (data.alerts || []).filter(a => a.is_active === 1);
+        }
+    } catch (err) {
+        console.error("Error fetching active watchlist:", err);
+    }
 }
 
 function checkPasswordProtection(action) {
@@ -67,6 +83,8 @@ async function submitPassword() {
             sessionStorage.setItem('settings_password', pwd);
             const actionToRun = pendingAuthAction;
             closePasswordModal();
+            await fetchActiveWatchlistOnly();
+            renderTable();
             if (actionToRun) {
                 actionToRun();
             }
@@ -250,6 +268,7 @@ async function loadData() {
 
         updateRiskPanel();
         renderTopPicks();
+        await fetchActiveWatchlistOnly();
         renderTable();
 
     } catch (err) {
@@ -948,10 +967,19 @@ function renderTable() {
         const pbBadge  = stock.pullbackBuy        ? `<span class="swing-badge pb" title="Pullback Buy Zone">PB</span>` : '';
         const rbBadge  = stock.breakoutResistance ? `<span class="swing-badge rb" title="Resistance Breakout">RB</span>` : '';
 
+        // Watchlist active heart indicator
+        const isWatchlisted = activeWatchlist.some(w => w.sym === stock.sym);
+        const heartIcon = isWatchlisted 
+            ? `<i class="fa-solid fa-heart" style="color:#ef4444; cursor:pointer; margin-left: 6px; font-size: 0.95rem;" title="Active Price Alert"></i>` 
+            : `<i class="fa-regular fa-heart" style="color:var(--text-muted); cursor:pointer; margin-left: 6px; font-size: 0.95rem;" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='var(--text-muted)'" title="Add Watchlist Alert"></i>`;
+
         return `
         <tr class="row-clickable" onclick="openModal('${stock.sym}')">
             <td>
                 <span class="symbol-column">${stock.sym}</span>
+                <span onclick="event.stopPropagation(); quickAddWatchlist('${stock.sym}', '${stock.yahoo}', ${stock.price})">
+                    ${heartIcon}
+                </span>
                 ${stBadge}${pbBadge}${rbBadge}
                 <span class="symbol-name">${stock.name}</span>
                 ${capDot}
@@ -1465,8 +1493,75 @@ function closeWatchlistModal() {
     document.getElementById('watchlistModal').style.display = 'none';
 }
 
-// Bind to window for inline onclick execution
 window.deleteWatchlistAlert = deleteWatchlistAlert;
+
+// ── QUICK ALERT MODAL ──
+function closeQuickAlertModal() {
+    document.getElementById('quickAlertModal').style.display = 'none';
+}
+
+function quickAddWatchlist(sym, yahoo, price) {
+    checkPasswordProtection(async () => {
+        const isWatchlisted = activeWatchlist.some(w => w.sym === sym);
+        if (isWatchlisted) {
+            showToast('Opening Watchlist Alerts...', 'success');
+            openWatchlistModal();
+            return;
+        }
+
+        // Fill Form & Show Modal
+        document.getElementById('quickAlertSym').value = sym;
+        document.getElementById('quickAlertYahoo').value = yahoo || (sym + '.NS');
+        document.getElementById('quickAlertCurrentPrice').value = `₹${parseFloat(price).toFixed(2)}`;
+        document.getElementById('quickAlertTarget').value = parseFloat(price).toFixed(2);
+        document.getElementById('quickAlertCondition').value = 'ABOVE';
+        
+        document.getElementById('quickAlertModal').style.display = 'flex';
+        setTimeout(() => { document.getElementById('quickAlertTarget').focus(); }, 100);
+    });
+}
+
+async function submitQuickAlert(e) {
+    e.preventDefault();
+    const sym = document.getElementById('quickAlertSym').value;
+    const yahoo = document.getElementById('quickAlertYahoo').value;
+    const targetPrice = document.getElementById('quickAlertTarget').value.trim();
+    const condition = document.getElementById('quickAlertCondition').value;
+
+    if (!sym || !targetPrice) return;
+
+    try {
+        const res = await fetch('/api/watchlist', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders()
+            },
+            body: JSON.stringify({
+                sym,
+                yahoo,
+                target_price: targetPrice,
+                condition
+            })
+        });
+        const result = await res.json();
+
+        if (result.status === "ok") {
+            closeQuickAlertModal();
+            showToast(result.message || 'Price alert set!', 'success');
+            await fetchActiveWatchlistOnly();
+            renderTable();
+        } else {
+            alert("Error: " + (result.message || "Failed to set alert"));
+        }
+    } catch (err) {
+        console.error("Error setting quick price alert:", err);
+        alert("Failed to connect to server.");
+    }
+}
+
+// Bind to window for inline onclick execution
+window.quickAddWatchlist = quickAddWatchlist;
 
 
 // ═══════════════════════════════════════════════════════════════
@@ -1647,6 +1742,13 @@ document.getElementById('watchlistModal').addEventListener('click', (e) => {
 });
 document.getElementById('addWatchlistForm').addEventListener('submit', addWatchlistAlert);
 
+// Quick Alert Modal bindings
+document.getElementById('quickAlertModalClose').addEventListener('click', closeQuickAlertModal);
+document.getElementById('quickAlertModal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('quickAlertModal')) closeQuickAlertModal();
+});
+document.getElementById('quickAlertForm').addEventListener('submit', submitQuickAlert);
+
 // Details tabs bindings
 document.getElementById('btnTabChart').addEventListener('click', () => {
     document.getElementById('btnTabChart').classList.add('active');
@@ -1690,6 +1792,7 @@ document.addEventListener('keydown', (e) => {
         closeModal();
         closeStocksModal();
         closeWatchlistModal();
+        closeQuickAlertModal();
         closeSettingsModal();
     }
 });
