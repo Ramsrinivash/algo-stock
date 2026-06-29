@@ -844,7 +844,7 @@ def api_check_alerts():
         yahoo_sym = alert["yahoo"]
         sym = alert["sym"]
         target = float(alert["target_price"])
-        cond = alert["condition"]
+        cond = alert["alert_condition"]
         alert_id = alert["id"]
 
         if yahoo_sym not in price_cache:

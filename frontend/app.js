@@ -1400,7 +1400,7 @@ async function loadWatchlist() {
             tr.innerHTML = `
                 <td><strong>${escapeHtml(alert.sym)}</strong><br><small class="text-secondary">${escapeHtml(alert.yahoo)}</small></td>
                 <td>₹${parseFloat(alert.target_price).toFixed(2)}</td>
-                <td><span class="trend-badge ${alert.condition === 'ABOVE' ? 'bullish' : 'bearish'}">${escapeHtml(alert.condition)}</span></td>
+                <td><span class="trend-badge ${alert.alert_condition === 'ABOVE' ? 'bullish' : 'bearish'}">${escapeHtml(alert.alert_condition)}</span></td>
                 <td>${statusHtml}</td>
                 <td><small>${addedDate}</small></td>
                 <td class="text-center">

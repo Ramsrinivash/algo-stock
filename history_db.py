@@ -117,7 +117,7 @@ def init_db():
                 sym VARCHAR(20) NOT NULL,
                 yahoo VARCHAR(20) NOT NULL,
                 target_price REAL NOT NULL,
-                condition VARCHAR(10) NOT NULL,
+                alert_condition VARCHAR(10) NOT NULL,
                 is_active INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 triggered_at TIMESTAMP NULL
@@ -130,7 +130,7 @@ def init_db():
                 sym TEXT NOT NULL,
                 yahoo TEXT NOT NULL,
                 target_price REAL NOT NULL,
-                condition TEXT NOT NULL,
+                alert_condition TEXT NOT NULL,
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 triggered_at TEXT NULL
@@ -365,12 +365,12 @@ def add_watchlist_alert(sym, yahoo, target_price, condition):
     try:
         if DATABASE_URL:
             cursor.execute("""
-                INSERT INTO watchlist_alerts (sym, yahoo, target_price, condition)
+                INSERT INTO watchlist_alerts (sym, yahoo, target_price, alert_condition)
                 VALUES (%s, %s, %s, %s)
             """, (sym.upper(), yahoo, float(target_price), condition.upper()))
         else:
             cursor.execute("""
-                INSERT INTO watchlist_alerts (sym, yahoo, target_price, condition)
+                INSERT INTO watchlist_alerts (sym, yahoo, target_price, alert_condition)
                 VALUES (?, ?, ?, ?)
             """, (sym.upper(), yahoo, float(target_price), condition.upper()))
         conn.commit()
