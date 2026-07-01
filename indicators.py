@@ -174,6 +174,158 @@ def calc_ema_cross(series, fast=9, slow=21, lookback=3):
     return False
 
 
+# ── CHECK FRESH CROSSOVERS (EMA9/25 & SUPERTREND FLIP) ────────
+def check_fresh_crossovers(ema9_series, ema25_series, st_dir_series, lookback=3):
+    """
+    Detects if EMA9 crossed above EMA25 or if Supertrend flipped GREEN in last N days.
+    """
+    fresh_ema = False
+    fresh_st = False
+    days_ago = 0
+    trigger = ""
+
+    for i in range(-1, -(lookback + 1), -1):
+        try:
+            # Check EMA Crossover
+            crossed_ema = ema9_series.iloc[i] > ema25_series.iloc[i] and ema9_series.iloc[i-1] <= ema25_series.iloc[i-1]
+            
+            # Check Supertrend Flip
+            flipped_st = st_dir_series.iloc[i] == 'BUY' and st_dir_series.iloc[i-1] == 'SELL'
+            
+            if crossed_ema and not fresh_ema:
+                fresh_ema = True
+                if not trigger:
+                    trigger = "EMA9 crossed above EMA25"
+                    days_ago = abs(i)
+            if flipped_st and not fresh_st:
+                fresh_st = True
+                if not trigger:
+                    trigger = "Supertrend flipped GREEN"
+                    days_ago = abs(i)
+        except IndexError:
+            pass
+
+    return fresh_ema, fresh_st, days_ago, trigger
+
+
+# ── MOVEMENT PREDICTION (5-FACTOR MOVEMENT ESTIMATOR) ─────────
+def calc_movement_prediction(df, rsi_series, adx_val, rsi_val, vol_ratio):
+    """
+    Predicts if stock is more likely to go UP or DOWN based on 5 factors.
+    Supports both uppercase and lowercase DataFrame columns.
+    """
+    votes = 0
+    factors = []
+
+    # Get close, high, low series safely
+    close_col = "Close" if "Close" in df.columns else "close"
+    high_col = "High" if "High" in df.columns else "high"
+    low_col = "Low" if "Low" in df.columns else "low"
+    
+    close = df[close_col]
+    high = df[high_col]
+    low = df[low_col]
+
+    # Factor 1: EMA momentum (EMA9 vs EMA25)
+    ema9 = close.ewm(span=9, adjust=False).mean()
+    ema25 = close.ewm(span=25, adjust=False).mean()
+    if float(ema9.iloc[-1]) > float(ema25.iloc[-1]):
+        votes += 1
+        factors.append("✅ EMA momentum UP")
+    else:
+        votes -= 1
+        factors.append("❌ EMA momentum DOWN")
+
+    # Factor 2: MACD histogram (momentum shift)
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd_line = ema12 - ema26
+    signal_line = macd_line.ewm(span=9, adjust=False).mean()
+    hist = macd_line - signal_line
+    hist_now = float(hist.iloc[-1])
+    hist_prev = float(hist.iloc[-2])
+    if hist_now > hist_prev:
+        votes += 1
+        factors.append("✅ MACD histogram rising (momentum UP)")
+    else:
+        votes -= 1
+        factors.append("❌ MACD histogram falling (momentum DOWN)")
+
+    # Factor 3: RSI trend (rising or falling over 3 days)
+    rsi_now = float(rsi_series.iloc[-1])
+    rsi_3ago = float(rsi_series.iloc[-4]) if len(rsi_series) >= 4 else rsi_now
+    if rsi_now > rsi_3ago:
+        votes += 1
+        factors.append(f"✅ RSI rising ({rsi_3ago:.0f} → {rsi_now:.0f})")
+    else:
+        votes -= 1
+        factors.append(f"❌ RSI falling ({rsi_3ago:.0f} → {rsi_now:.0f})")
+
+    # Factor 4: Volume trend
+    if vol_ratio >= 1.5:
+        votes += 1
+        factors.append(f"✅ Volume surging ({vol_ratio}x avg)")
+    elif vol_ratio >= 1.2:
+        votes += 0
+        factors.append(f"⚡ Volume adequate ({vol_ratio}x avg)")
+    else:
+        votes -= 1
+        factors.append(f"❌ Volume weak ({vol_ratio}x avg)")
+
+    # Factor 5: Candle structure (higher highs + higher lows last 3 days)
+    highs = high.iloc[-3:].values
+    lows = low.iloc[-3:].values
+    if len(highs) >= 3 and len(lows) >= 3:
+        higher_highs = highs[-1] > highs[-2] > highs[-3]
+        higher_lows = lows[-1] > lows[-2] > lows[-3]
+        if higher_highs and higher_lows:
+            votes += 1
+            factors.append("✅ Higher highs + higher lows (strong structure)")
+        elif higher_highs or higher_lows:
+            votes += 0
+            factors.append("⚡ Partial higher structure")
+        else:
+            votes -= 1
+            factors.append("❌ Lower highs or lower lows (weak structure)")
+    else:
+        votes -= 1
+        factors.append("❌ Insufficient data for candle structure")
+
+    # Convert votes to probability
+    up_probability = 50 + (votes * 9)
+    up_probability = max(10, min(95, up_probability))
+
+    if votes >= 3:
+        prediction = "⬆️ STRONG UP"
+        confidence = "High"
+    elif votes == 2:
+        prediction = "⬆️ LIKELY UP"
+        confidence = "Medium"
+    elif votes == 1:
+        prediction = "↗️ SLIGHT UP BIAS"
+        confidence = "Low"
+    elif votes == 0:
+        prediction = "↔️ NEUTRAL / CHOPPY"
+        confidence = "None"
+    elif votes == -1:
+        prediction = "↘️ SLIGHT DOWN BIAS"
+        confidence = "Low"
+    elif votes == -2:
+        prediction = "⬇️ LIKELY DOWN"
+        confidence = "Medium"
+    else:
+        prediction = "⬇️ STRONG DOWN"
+        confidence = "High"
+
+    return {
+        "prediction":     prediction,
+        "confidence":     confidence,
+        "up_prob":        up_probability,
+        "votes":          votes,
+        "factors":        factors,
+    }
+
+
 # ── TREND DAYS ────────────────────────────────────────────────
 def calc_trend_days(df):
     """
@@ -352,14 +504,14 @@ def calc_pivot_cpr(df):
 
 
 # ── SUPERTREND (10, 3) ────────────────────────────────────────
-def calc_supertrend(df, period=10, multiplier=3):
+def calc_supertrend_full(df, period=10, multiplier=3):
     """
     Supertrend Indicator (10, 3) - matches TradingView exactly.
-    Calculates rolling upper and lower bands using ATR, and checks direction.
+    Returns full series: (st_series, direction_series)
     """
-    high = df["High"]
-    low = df["Low"]
-    close = df["Close"]
+    high = df.get("High", df.get("high"))
+    low = df.get("Low", df.get("low"))
+    close = df.get("Close", df.get("close"))
     prev_close = close.shift(1)
     
     tr = pd.concat([
@@ -423,7 +575,16 @@ def calc_supertrend(df, period=10, multiplier=3):
                 st[i] = fub[i]
                 direction[i] = "SELL"
                 
-    return round(float(st[-1]), 2), direction[-1]
+    return pd.Series(st, index=df.index), pd.Series(direction, index=df.index)
+
+
+def calc_supertrend(df, period=10, multiplier=3):
+    """
+    Supertrend Indicator (10, 3) - matches TradingView exactly.
+    Calculates rolling upper and lower bands using ATR, and checks direction.
+    """
+    st_s, dir_s = calc_supertrend_full(df, period, multiplier)
+    return round(float(st_s.iloc[-1]), 2), dir_s.iloc[-1]
 
 
 # ── MACD — Moving Average Convergence Divergence ─────────────
@@ -710,19 +871,39 @@ def calc_all(df, df_nifty=None):
     close = df["Close"]
     price = round(float(close.iloc[-1]), 2)
 
+    # EMAs Series
+    ema9_series = close.ewm(span=9, adjust=False).mean()
+    ema25_series = close.ewm(span=25, adjust=False).mean()
+
     # EMAs
-    e9   = calc_ema(close, 9)
+    e9   = round(float(ema9_series.iloc[-1]), 2)
     e21  = calc_ema(close, 21)
+    e25  = round(float(ema25_series.iloc[-1]), 2)
     e50  = calc_ema(close, 50)
     e20  = calc_ema(close, 20)
     has_ema200 = len(close) >= 200
     e200 = calc_ema(close, 200) if has_ema200 else e50
 
+    # Supertrend Series
+    st_series, st_dir_series = calc_supertrend_full(df, 10, 3)
+    st_val = round(float(st_series.iloc[-1]), 2)
+    st_dir = st_dir_series.iloc[-1]
+
+    # Fresh crossovers (EMA9/25 and Supertrend flip)
+    fresh_ema, fresh_st, days_ago, trigger = check_fresh_crossovers(ema9_series, ema25_series, st_dir_series, lookback=3)
+
     # EMA Crossover flag
     ema_cross = calc_ema_cross(close)
 
-    # RSI (needed by pullbackBuy below)
-    r = calc_rsi(close, 14)
+    # RSI Series
+    delta    = close.diff()
+    gain     = delta.clip(lower=0)
+    loss     = (-delta).clip(lower=0)
+    avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
+    rs       = avg_gain / avg_loss
+    rsi_s    = 100 - (100 / (1 + rs))
+    r        = round(float(rsi_s.iloc[-1]), 2)
 
     # ATR
     atr_val, atr_pct = calc_atr(df, 14)
@@ -749,7 +930,7 @@ def calc_all(df, df_nifty=None):
     else:
         market_trend = "SIDEWAYS"
 
-    # Price data (needed by breakoutResistance)
+    # Price data (needed by breakoutResistance and prediction)
     _pd       = calc_price_data(df)
     vol_ratio = _pd.get("volRatio", 0)
 
@@ -814,6 +995,9 @@ def calc_all(df, df_nifty=None):
     else:
         mansfield_rs = 0.0
 
+    adx_val = adx_data.get("adxVal", 0)
+    prediction = calc_movement_prediction(df, rsi_s, adx_val, r, vol_ratio)
+
     return {
         # Relative Strength & Volatility Contraction
         "mansfieldRs":      mansfield_rs,
@@ -837,15 +1021,27 @@ def calc_all(df, df_nifty=None):
         "ema9":             e9,
         "ema20":            e20,
         "ema21":            e21,
+        "ema25":            e25,
         "ema50":            e50,
         "ema200":           e200,
         # EMA flags
         "aboveEma21":       bool(price > e21),
         "aboveEma50":       bool(price > e50),
         "ema9Above21":      bool(e9 > e21),
+        "ema9Above25":      bool(e9 > e25),
         "emaCrossAlert":    ema_cross,
         "emaBullStack":     ema_bull_stack,
         "hasEma200":        has_ema200,
+        # Fresh crossovers
+        "freshEmaCross":    fresh_ema,
+        "freshStFlip":      fresh_st,
+        "daysAgo":          days_ago,
+        "trigger":          trigger,
+        # Movement prediction
+        "prediction":       prediction["prediction"],
+        "predictionConfidence": prediction["confidence"],
+        "predictionUpProb":     prediction["up_prob"],
+        "predictionFactors":    prediction["factors"],
         # RSI
         "rsi":              r,
         "rsiZone":          rsi_zone(r),
@@ -887,14 +1083,18 @@ def calc_weekly(df_weekly):
     Called separately by scanner.py with interval='1wk' data.
 
     Returns:
-        dict: weeklyTrend (UPTREND/DOWNTREND/SIDEWAYS),
-              weeklyRsi, weeklyEma20AboveEma50
+        dict: weeklyTrend, weeklyRsi, weeklyEma20AboveEma50, weeklySupertrendVal, weeklySupertrendDir, weeklyEma9, weeklyEma25, weeklyEmaBull
     """
     if df_weekly is None or len(df_weekly) < 30:
         return {
             "weeklyTrend":          "UNKNOWN",
             "weeklyRsi":            50.0,
             "weeklyEma20AboveEma50": False,
+            "weeklySupertrendVal":  0.0,
+            "weeklySupertrendDir":  "SELL",
+            "weeklyEma9":           0.0,
+            "weeklyEma25":          0.0,
+            "weeklyEmaBull":        False,
         }
 
     close   = df_weekly["Close"]
@@ -902,6 +1102,12 @@ def calc_weekly(df_weekly):
     we20    = float(close.ewm(span=20, adjust=False).mean().iloc[-1])
     we50    = float(close.ewm(span=50, adjust=False).mean().iloc[-1])
     wrsi    = calc_rsi(close, 14)
+
+    we9     = float(close.ewm(span=9, adjust=False).mean().iloc[-1])
+    we25    = float(close.ewm(span=25, adjust=False).mean().iloc[-1])
+    weekly_ema_bull = bool(we9 > we25)
+
+    st_val, st_dir = calc_supertrend(df_weekly, 10, 3)
 
     if price > we20 > we50:
         weekly_trend = "UPTREND"
@@ -914,6 +1120,11 @@ def calc_weekly(df_weekly):
         "weeklyTrend":          weekly_trend,
         "weeklyRsi":            wrsi,
         "weeklyEma20AboveEma50": bool(we20 > we50),
+        "weeklySupertrendVal":  st_val,
+        "weeklySupertrendDir":  st_dir,
+        "weeklyEma9":           round(we9, 2),
+        "weeklyEma25":          round(we25, 2),
+        "weeklyEmaBull":        weekly_ema_bull,
     }
 
 

@@ -64,27 +64,54 @@ def fetch_ohlcv(yahoo_sym, period="1y"):
 # ── FETCH NIFTY 50 ────────────────────────────────────────────
 def fetch_nifty(symbol="^NSEI"):
     """
-    Fetch Nifty 50 index price and change%.
-
-    Returns dict:
-        price   → current Nifty value
-        change  → day change %
-        status  → "ok" or "error"
+    Fetch Nifty 50 index price, change%, and calculate circuit breaker status.
     """
     try:
-        df = yf.Ticker(symbol).history(period="5d", interval="1d")
+        # Use Ticker.history for consistency with fetcher.py guidelines
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="120d", interval="1d")
 
-        if df is None or df.empty or len(df) < 2:
+        if df is None or df.empty or len(df) < 50:
             raise ValueError("Not enough Nifty data")
 
-        price  = round(float(df["Close"].iloc[-1]), 2)
-        prev   = round(float(df["Close"].iloc[-2]), 2)
-        change = round(((price - prev) / prev) * 100, 2)
+        today_close = float(df["Close"].iloc[-1])
+        prev_close  = float(df["Close"].iloc[-2])
+        day_change  = round(((today_close - prev_close) / prev_close) * 100, 2)
+
+        # Calculate EMAs on Nifty
+        close_series = df["Close"]
+        ema50 = close_series.ewm(span=50, adjust=False).mean()
+        above_ema50 = bool(today_close > ema50.iloc[-1])
+
+        ema9 = close_series.ewm(span=9, adjust=False).mean()
+        ema25 = close_series.ewm(span=25, adjust=False).mean()
+        nifty_bull = bool(ema9.iloc[-1] > ema25.iloc[-1])
+
+        # Circuit breaker conditions
+        circuit_open = False
+        reason = ""
+
+        if day_change <= -1.0:
+            circuit_open = True
+            reason = f"Nifty fell {day_change:.2f}% today (>1% drop — no trades)"
+        elif not above_ema50:
+            circuit_open = True
+            reason = f"Nifty below 50-EMA — market in downtrend, avoid fresh buys"
+        elif not nifty_bull:
+            circuit_open = True
+            reason = f"Nifty EMA9 below EMA25 — short term trend bearish"
+        elif day_change <= -0.5:
+            reason = f"Nifty weak ({day_change:.2f}%) — reduce position size to 50%"
 
         return {
-            "price":  price,
-            "change": change,
-            "status": "ok"
+            "price":         round(today_close, 2),
+            "change":        day_change,
+            "status":        "ok",
+            "above_ema50":   above_ema50,
+            "nifty_bull":    nifty_bull,
+            "circuit_open":  circuit_open,
+            "reason":        reason,
+            "reduce_size":   (day_change <= -0.5 and not circuit_open),
         }
 
     except Exception as e:
@@ -92,8 +119,14 @@ def fetch_nifty(symbol="^NSEI"):
             "price":  0,
             "change": 0,
             "status": "error",
-            "error":  str(e)
+            "error":  str(e),
+            "above_ema50": True,
+            "nifty_bull": True,
+            "circuit_open": False,
+            "reason": f"Could not fetch Nifty: {e}",
+            "reduce_size": False,
         }
+
 
 
 # ── FETCH ALL STOCKS ──────────────────────────────────────────
@@ -169,64 +202,3 @@ def fetch_live_price(yahoo_sym):
     except Exception as e:
         print(f"[fetcher] Error fetching live price for {yahoo_sym}: {e}")
         return None
-
-
-# ── TEST ──────────────────────────────────────────────────────
-if __name__ == "__main__":
-    from stocks import STOCKS, NIFTY_SYM
-    from datetime import datetime
-
-    print("=" * 60)
-    print("  fetcher.py — TEST RUN")
-    print("=" * 60)
-    print(f"  yfinance : {yf.__version__}")
-    print(f"  Time     : {datetime.now().strftime('%d %b %Y  %H:%M:%S')}")
-    print()
-
-    # Test 1 — Nifty
-    print("─" * 60)
-    print("  TEST 1 : Nifty 50")
-    print("─" * 60)
-    nifty = fetch_nifty(NIFTY_SYM)
-    if nifty["status"] == "ok":
-        sign = "+" if nifty["change"] >= 0 else ""
-        print(f"  ✅  ₹{nifty['price']:,.2f}  "
-              f"({sign}{nifty['change']}%)")
-    else:
-        print(f"  ❌  {nifty.get('error')}")
-    print()
-
-    # Test 2 — Single stock
-    print("─" * 60)
-    print("  TEST 2 : Single stock (HDFCBANK)")
-    print("─" * 60)
-    df = fetch_ohlcv("HDFCBANK.NS", period="1y")
-    if df is not None:
-        print(f"  ✅  {len(df)} rows fetched")
-        print(f"  Columns  : {list(df.columns)}")
-        print(f"  Latest   : {df.index[-1].date()}")
-        print(f"  Close    : ₹{df['Close'].iloc[-1]:,.2f}")
-        print(f"  Volume   : {int(df['Volume'].iloc[-1]):,}")
-    else:
-        print("  ❌  Failed")
-    print()
-
-    # Test 3 — First 5 stocks from stocks.py
-    print("─" * 60)
-    print(f"  TEST 3 : First 5 stocks from stocks.py")
-    print("─" * 60)
-    test_batch = STOCKS[:5]
-    fetched = fetch_all_stocks(test_batch, period="1y", verbose=True)
-    print()
-
-    # Summary
-    print("─" * 60)
-    if len(fetched) == len(test_batch):
-        print(f"  ✅  ALL GOOD — fetcher.py is working correctly")
-        print(f"  Next step: python indicators.py")
-    else:
-        failed = [s[0] for s in test_batch if s[0] not in fetched]
-        print(f"  ⚠   {len(fetched)}/{len(test_batch)} ok")
-        print(f"  Failed: {failed}")
-        print(f"  Fix: check Yahoo symbol for these stocks")
-    print("=" * 60)

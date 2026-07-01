@@ -60,15 +60,13 @@ WEIGHTS = {
 
 # Signal thresholds (recalibrated for new scoring system)
 STRONG_BUY_THRESHOLD = 85
-BUY_THRESHOLD        = 60
-WATCH_THRESHOLD      = 40
+BUY_THRESHOLD = 60
+WATCH_THRESHOLD = 40
 
-
-# ── SCORE STOCK ───────────────────────────────────────────────
 def score_stock(s):
     """
-    Calculate swing trade score based on R-Multiple Blueprint v2.0.
-    Hard filters applied first — returns 0 if stock fails any filter.
+    Calculate swing trade score based on Fresh Signal Scanner v4 scorecard (out of 100).
+    Returns 0 if hard filters fail.
     """
     price    = s.get("price", 0)
     avg_vol  = s.get("avgVol20", 0)
@@ -79,94 +77,64 @@ def score_stock(s):
     if price < 20:                          return 0   # penny stock
     if avg_vol < 100000:                    return 0   # illiquid
     if atr_pct < 1.5:                       return 0   # not volatile enough
-    if ema50 > 0 and price < ema50 * 0.95: return 0   # too far below EMA50
+    if ema50 > 0 and price < ema50 * 0.95:  return 0   # too far below EMA50
 
     sc = 0
 
-    # ── 1. RSI (20 pts) ────────────────────────────────────────
-    # Sweet spot: 52-65 = strong momentum, not yet overbought
-    rsi = s.get("rsi", 50)
-    if 52 <= rsi <= 65:
-        sc += WEIGHTS["rsi_ideal"]          # +20 — perfect momentum zone
-    elif 65 < rsi <= 70:
-        sc += WEIGHTS["rsi_ok"]             # +12 — extended but still ok
-    elif 45 <= rsi < 52:
-        sc += WEIGHTS["rsi_recovering"]     # +8  — recovering momentum
-    elif rsi > 70:
-        sc -= 10                            # -10 — overbought, dangerous entry
+    # 1. Freshness (20 pts)
+    days_ago = s.get("daysAgo", s.get("days_ago", 0))
+    if 0 < days_ago <= 1: sc += 20
+    elif days_ago == 2:   sc += 14
+    elif days_ago == 3:   sc += 9
+    else:                 sc += 0  # No fresh signal
 
-    # ── 2. EMA50 Pullback Zone (25 pts) ─ PRIMARY SIGNAL ───────
-    # The single most important factor: price near EMA50 in uptrend
-    dist_ema50 = s.get("distEma50", 0)
-    if 0 <= dist_ema50 <= 4:
-        sc += WEIGHTS["ema50_ideal"]        # +25 — IDEAL pullback zone
-    elif 4 < dist_ema50 <= 8:
-        sc += WEIGHTS["ema50_ok"]           # +18 — acceptable extension
-    elif 8 < dist_ema50 <= 15:
-        sc += WEIGHTS["ema50_extended"]     # +8  — getting extended
-    elif dist_ema50 > 15:
-        sc -= 10                            # -10 — too far, wait for pullback
-    elif dist_ema50 < 0:
-        sc -= 5                             # -5  — below EMA50, downtrend
-
-    # ── 3. MACD (15 pts) ────────────────────────────────────────
-    macd_bull    = s.get("macdBull", False)     # fresh cross above signal
-    macd_above   = s.get("macdAbove", False)    # MACD line > signal line
-    macd_hist    = s.get("macdHist", 0)         # histogram value
-    macd_rising  = macd_hist > 0                # histogram positive (rising)
-
-    if macd_above and macd_rising:
-        sc += WEIGHTS["macd_full"]              # +15 — bull + rising
-    elif macd_above:
-        sc += WEIGHTS["macd_partial"]           # +8  — bull only
-    elif macd_bull or macd_rising:
-        sc += WEIGHTS["macd_turning"]           # +5  — turning positive
+    # 2. Distance from Supertrend line (15 pts)
+    st_line = s.get("supertrendVal", 0)
+    st_dir = s.get("supertrendDir", "")
+    if price > 0 and st_line > 0 and st_dir == "BUY" and price >= st_line:
+        st_dist = ((price - st_line) / price) * 100
+        if st_dist <= 4:    sc += 15
+        elif st_dist <= 8:  sc += 9
+        else:               sc += 4
     else:
-        sc -= 5                                 # -5  — bearish MACD
+        sc += 0  # No Supertrend BUY proximity bonus if in SELL mode
 
-    # ── 4. ATR Volatility (15 pts) ──────────────────────────────
-    # Need enough ATR for meaningful swing trade profit
-    if atr_pct >= 3.0:
-        sc += WEIGHTS["atr_ideal"]          # +15 — high volatility, good swings
-    elif atr_pct >= 2.0:
-        sc += WEIGHTS["atr_ok"]             # +10 — moderate volatility
-    elif atr_pct >= 1.5:
-        sc += WEIGHTS["atr_min"]            # +5  — minimum acceptable
+    # 3. ADX strength (15 pts)
+    adx_val = s.get("adxVal", s.get("adx", 0))
+    if adx_val >= 30:   sc += 15
+    elif adx_val >= 25: sc += 11
+    else:               sc += 6
 
-    # ── 5. Volume (10 pts) ──────────────────────────────────────
-    vol_ratio = s.get("volRatio", 0)
-    if vol_ratio >= 2.0 or s.get("volSpike", False):
-        sc += WEIGHTS["vol_ideal"]          # +10 — institutional participation
-    elif vol_ratio >= 1.3:
-        sc += WEIGHTS["vol_ok"]             # +6  — above average
-    elif vol_ratio < 0.8:
-        sc -= 8                             # -8  — low conviction, avoid
+    # 4. Volume (13 pts)
+    vol_ratio = s.get("volRatio", s.get("vol_ratio", 1.0))
+    if vol_ratio >= 2.0:   sc += 13
+    elif vol_ratio >= 1.5: sc += 9
+    else:                  sc += 5
 
-    # ── 6. ADX Trend Strength (10 pts) ──────────────────────────
-    adx_val = s.get("adxVal", 0)
-    di_positive = s.get("diPositive", False)
-    if adx_val >= 30 and di_positive:
-        sc += WEIGHTS["adx_strong"]         # +10 — strong trending
-    elif adx_val >= 25:
-        sc += WEIGHTS["adx_ok"]             # +6  — mild trend
-    elif adx_val < 20:
-        sc -= 5                             # -5  — choppy, range-bound
+    # 5. RSI (13 pts)
+    rsi_val = s.get("rsi", 50)
+    rsi_mid = abs(rsi_val - 60)
+    if rsi_mid <= 5:    sc += 13
+    elif rsi_mid <= 10: sc += 8
+    else:               sc += 4
 
-    # ── 7. EMA20 Distance (5 pts) ───────────────────────────────
-    dist_ema20 = s.get("distEma20", 0)
-    if 0 <= dist_ema20 <= 5:
-        sc += WEIGHTS["ema20_ok"]           # +5  — close to EMA20 support
-    elif dist_ema20 > 8:
-        sc -= 3                             # -3  — extended above EMA20
+    # 6. ATR% (13 pts)
+    if atr_pct >= 2.5:   sc += 13
+    elif atr_pct >= 1.8: sc += 8
+    else:                sc += 4
 
-    # ── 8. Bollinger Band Position (5 pts) ──────────────────────
-    bb_pct = s.get("bbPct", 50)
-    if 40 <= bb_pct <= 75:
-        sc += WEIGHTS["bb_mid"]             # +5  — healthy mid-band position
-    elif bb_pct > 90:
-        sc -= 8                             # -8  — near upper band, stretched
+    # 7. EMA gap tightness (11 pts)
+    ema9 = s.get("ema9", 0)
+    ema25 = s.get("ema25", 0)
+    if ema25 > 0 and ema9 >= ema25:
+        ema_gap = ((ema9 - ema25) / ema25) * 100
+        if ema_gap <= 3:    sc += 11
+        elif ema_gap <= 6:  sc += 6
+        else:               sc += 2
+    else:
+        sc += 0  # No points if ema9 is below ema25
 
-    # ── Bonus Signals ────────────────────────────────────────────
+    # Removed early return to allow bonus scoring logic
 
     # Weekly Uptrend alignment (+5)
     if s.get("weeklyTrend") == "UPTREND":
@@ -390,82 +358,4 @@ def get_full_analysis(s, capital=100000):
         "holdDuration":           duration,
         "rrGatePassed":           bool(rr >= 1.5),
     }
-
-
-# ── TEST ──────────────────────────────────────────────────────
-if __name__ == "__main__":
-    from datetime import datetime
-
-    print("=" * 62)
-    print("  scorer.py - TEST RUN")
-    print("=" * 62)
-    print(f"  Time : {datetime.now().strftime('%d %b %Y  %H:%M:%S')}")
-    print()
-
-    # Use exact numbers from Module 2 + 3 output
-    test_stocks = [
-        {
-            "sym": "COALINDIA", "name": "Coal India",
-            "price": 463.95, "change": 0.19, "rsi": 52.9,
-            "aboveEma21": True,  "aboveEma50": True,
-            "ema9Above21": True, "emaCrossAlert": False,
-            "volSpike": False,   "nearSupport": False,
-            "candleType": "neutral", "candleStrength": 2,
-            "atrPct": 2.5, "slPrice": 445.74,
-            "trendDays": 19,
-            "ema20": 458.0, "ema50": 450.0, "ema200": 430.0,
-            "higherHighsLows": True, "volRatio": 1.1, "avgVol20": 120000
-        },
-        {
-            "sym": "HDFCBANK", "name": "HDFC Bank",
-            "price": 753.20, "change": 0.37, "rsi": 38.5,
-            "aboveEma21": False, "aboveEma50": False,
-            "ema9Above21": False, "emaCrossAlert": False,
-            "volSpike": False,   "nearSupport": True,
-            "candleType": "bear", "candleStrength": 1,
-            "atrPct": 2.3, "slPrice": 727.25,
-            "trendDays": 0,
-            "ema20": 765.0, "ema50": 770.0, "ema200": 780.0,
-            "higherHighsLows": False, "volRatio": 0.9, "avgVol20": 80000
-        }
-    ]
-
-    print(f"  {'SYM':<12} {'SCORE':>5} {'TCS':>5}  SIG     MOM       VERDICT")
-    print("  " + "-" * 58)
-
-    for s in test_stocks:
-        a    = get_full_analysis(s, capital=100000)
-        icon = "[!]" if a["signal"]=="STRONG BUY" else \
-               "[o]" if a["signal"]=="BUY" else \
-               "[w]" if a["signal"]=="WATCH" else "[x]"
-        mom_icon = "^" if a["momentum"]=="high" else \
-                   "-" if a["momentum"]=="med"  else "v"
-        print(f"  {s['sym']:<12} {a['score']:>5} {a['trendContinuationScore']:>5}  "
-              f"{icon} {a['signal']:<5}  "
-              f"{mom_icon} {a['momentum']:<5}  "
-              f"{a['verdict']}")
-
-    print()
-    print("  -- DETAILED : COALINDIA ----------------------------")
-    a = get_full_analysis(test_stocks[0], capital=100000)
-    print(f"  RSI    : {test_stocks[0]['rsi']}  -> {a['rsiLabel']}  "
-          f"({a['rsiAdvice']})")
-    print(f"  Trend  : {test_stocks[0]['trendDays']}d  -> {a['trendLabel']}  "
-          f"({a['trendTiming']})")
-    print(f"  Shares : {a['shares']} shares  "
-          f"Capital: Rs.{a['capitalNeeded']:,.2f}")
-    print(f"  Max Loss: Rs.{a['maxLoss']:,.2f}  "
-          f"Profit 2:1: Rs.{a['profit2']:,.2f}  "
-          f"Profit 3:1: Rs.{a['profit3']:,.2f}")
-    print()
-    print("  -- SCORE WEIGHTS -----------------------------------")
-    for k, v in WEIGHTS.items():
-        print(f"    {k:<22} {v:>3} pts")
-    print(f"\n  BUY   >= {BUY_THRESHOLD}")
-    print(f"  WATCH >= {WATCH_THRESHOLD}")
-    print(f"  AVOID < {WATCH_THRESHOLD}")
-    print()
-    print("=" * 62)
-    print("  [x]  scorer.py working correctly")
-    print("  Next step: python scanner.py")
-    print("=" * 62)
+

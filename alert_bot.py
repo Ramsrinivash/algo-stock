@@ -30,7 +30,7 @@ DEFAULT_SETTINGS = {
     "telegram_chat_id": "",
     "alerts_enabled":   False,
     "alert_on_scan":    True,
-    "alert_min_score":  60,   # Recalibrated: BUY threshold is now 60 (new scoring system)
+    "alert_min_score":  70,   # Minimum score for Telegram alerts (matches UI slider default)
     "alert_limit":      10,
     "alert_signals":    ["BUY", "STRONG BUY"],
     "scan_hour":        17,
@@ -212,110 +212,83 @@ def format_scan_alert(summary):
 # ── FORMAT SINGLE RECOMMENDATION ──────────────────────────────
 def format_single_recommendation(s, scanned_at, market_mood):
     """
-    Format a highly detailed, rule-based recommendation message for a single stock.
+    Format a clean, actionable recommendation card for a single stock.
+    All dynamic — no static boilerplate. Every field reflects the stock's data.
     """
-    # Calculate indicators & details
-    price = s.get("price", 0.0)
-    sl_price = s.get("slPrice", 0.0)
+    price     = s.get("price", 0.0)
+    sl_price  = s.get("slPrice", 0.0)
     sl_points = max(price - sl_price, 0.01)
 
     sl_pct = s.get("slPct", 0.0)
     if not sl_pct and price > 0:
         sl_pct = (sl_points / price) * 100
 
-    # R-Multiple targets (use pre-calculated values, fallback to R-Multiple ratios)
-    R      = s.get("R", sl_points)           # 1R = 2×ATR (stored by indicators.py)
-    tgt1   = s.get("tgt1", round(price + 1.0 * R, 2))   # +1R
-    tgt2   = s.get("tgt2", round(price + 1.5 * R, 2))   # +1.5R
-    tgt3   = s.get("tgt3", round(price + 2.5 * R, 2))   # +2.5R
+    # R-Multiple targets (pre-calculated by indicators.py, fallback to 1R/1.5R/2.5R)
+    R    = s.get("R", sl_points)
+    tgt1 = s.get("tgt1", round(price + 1.0 * R, 2))
+    tgt2 = s.get("tgt2", round(price + 1.5 * R, 2))
+    tgt3 = s.get("tgt3", round(price + 2.5 * R, 2))
 
-    # Gain percentages for display (actual % from current price)
     tgt1_pct = round(((tgt1 - price) / price) * 100, 1) if price > 0 else 0
     tgt2_pct = round(((tgt2 - price) / price) * 100, 1) if price > 0 else 0
     tgt3_pct = round(((tgt3 - price) / price) * 100, 1) if price > 0 else 0
 
-    # R:R ratio — use pre-calculated value from scanner (always ~1.5 with R-Multiple formula)
     rr = s.get("rr", round((tgt2 - price) / R, 1) if R > 0 else 1.5)
 
-    # Star rating based on new scoring system (max ~110)
+    # Dynamic holding estimate from scorer.py (based on ATR%: 2–5d / 5–8d / 8–14d)
+    hold_duration = s.get("holdDuration", "5–14 days")
+
+    # Star rating
     score = s.get("score", 0)
     if score >= 95:
-        stars = "★★★★★"
-        verdict = "Strong Buy (Exceptional Setup)"
+        stars   = "★★★★★"
+        verdict = "Strong Buy — Exceptional Setup"
     elif score >= 80:
-        stars = "★★★★☆"
+        stars   = "★★★★☆"
         verdict = "Strong Buy"
     elif score >= 65:
-        stars = "★★★☆☆"
+        stars   = "★★★☆☆"
         verdict = "Buy"
     elif score >= 50:
-        stars = "★★☆☆☆"
+        stars   = "★★☆☆☆"
         verdict = "Watch Setup"
     else:
-        stars = "★☆☆☆☆"
+        stars   = "★☆☆☆☆"
         verdict = "Avoid Setup"
 
-    # Risk Level based on ATR
-    atr_pct = s.get("atrPct", 0.0)
-    if atr_pct < 3.0:
-        risk_level = "🟢 Low"
-    elif atr_pct <= 5.0:
-        risk_level = "🟡 Medium"
-    else:
-        risk_level = "🔴 High"
-
-    # Momentum Level based on RSI, MACD, ADX
-    rsi = s.get("rsi", 50.0)
-    macd_bull = s.get("macdBull", False)
-    adx_strong = s.get("adxStrong", False)
-    if rsi >= 60.0 and macd_bull and adx_strong:
-        momentum = "🔥 Very Strong"
-    elif rsi >= 50.0 and (macd_bull or adx_strong):
-        momentum = "📈 Strong"
-    elif rsi >= 40.0:
-        momentum = "Moderate"
-    else:
-        momentum = "Weak"
-
-    # Trend Strength using Supertrend, EMA, Weekly
-    st_dir = s.get("supertrendDir", "")
-    weekly_trend = s.get("weeklyTrend", "")
-    if weekly_trend == "UPTREND" and st_dir == "BUY":
-        trend_strength = "🚀 Strong Uptrend"
-    elif weekly_trend == "UPTREND" or st_dir == "BUY":
-        trend_strength = "📈 Uptrend"
-    elif weekly_trend == "SIDEWAYS":
-        trend_strength = "↔️ Sideways"
-    else:
-        trend_strength = "📉 Weak Trend"
-
-    # Sector Rank
+    # Sector rank (if grouped before sending)
     rank_str = ""
     if "sector_rank" in s:
         rank, total = s["sector_rank"]
-        rank_str = f" (#{rank} in {s.get('sector','Other')} today)"
+        rank_str = f" | #{rank}/{total} in Sector"
 
-    # Buy Zone & Entry Strategy
+    # Entry type and buy zone
     is_pullback = s.get("pullbackBuy", False) or s.get("nearSupport", False) or s.get("nearEma20", False)
     is_breakout = s.get("breakoutResistance", False) or s.get("breakout52w", False)
 
     if is_pullback:
-        low_zone = max(s.get("support", price * 0.98), price * 0.98)
-        high_zone = price
+        low_zone     = max(s.get("support", price * 0.98), price * 0.98)
+        high_zone    = price
         buy_zone_str = f"₹{low_zone:,.2f} – ₹{high_zone:,.2f}"
-        entry_strategy = "🟡 Buy on Dip"
+        trade_type   = "Pullback Buy"
     elif is_breakout:
-        low_zone = price
-        high_zone = price * 1.015
+        low_zone     = price
+        high_zone    = price * 1.015
         buy_zone_str = f"₹{low_zone:,.2f} – ₹{high_zone:,.2f}"
-        entry_strategy = "🔵 Buy after Breakout"
+        trade_type   = "Breakout"
     else:
-        low_zone = price * 0.99
-        high_zone = price * 1.01
+        low_zone     = price * 0.99
+        high_zone    = price * 1.01
         buy_zone_str = f"₹{low_zone:,.2f} – ₹{high_zone:,.2f}"
-        entry_strategy = "✅ Buy Now"
+        trade_type   = "Trend Following"
 
-    # Trade Setup Reasons
+    # Setup reasons — only include what's actually true for this stock
+    st_dir      = s.get("supertrendDir", "")
+    weekly_trend = s.get("weeklyTrend", "")
+    macd_bull   = s.get("macdBull", False)
+    adx_strong  = s.get("adxStrong", False)
+    rsi         = s.get("rsi", 50.0)
+
     reasons = []
     if st_dir == "BUY":
         reasons.append("✅ Supertrend BUY")
@@ -324,115 +297,51 @@ def format_single_recommendation(s, scanned_at, market_mood):
     if macd_bull:
         reasons.append("✅ MACD Bullish")
     if adx_strong:
-        reasons.append("✅ ADX Strong")
+        reasons.append("✅ ADX Strong (Trend Confirmed)")
     if rsi:
-        reasons.append(f"✅ RSI Healthy ({rsi:.0f})")
+        reasons.append(f"✅ RSI: {rsi:.0f}")
     if s.get("aboveEma21"):
         reasons.append("✅ Above 21 EMA")
     if s.get("aboveEma50"):
         reasons.append("✅ Above 50 EMA")
-    if s.get("ema200") and price > s.get("ema200"):
+    if s.get("ema200") and price > s.get("ema200", 0):
         reasons.append("✅ Above 200 EMA")
     if s.get("higherHighsLows"):
         reasons.append("✅ Higher High Formation")
     if s.get("volSpike"):
-        reasons.append(f"✅ Volume Spike ({s.get('volRatio', 1.0):.1f}x)")
+        reasons.append(f"✅ Volume Spike ({s.get('volRatio', 1.0):.1f}x avg)")
 
-    reasons_str = "\n".join([f"* {r}" for r in reasons]) if reasons else "* Trend Following Setup"
+    reasons_str = "\n".join([f"  {r}" for r in reasons]) if reasons else "  Trend Following Setup"
 
-    # Suggested Position
-    mood_upper = str(market_mood).upper()
-    if "BULLISH" in mood_upper:
-        position_size = "Normal / Aggressive"
-    elif "NEUTRAL" in mood_upper:
-        position_size = "Normal"
-    else:
-        position_size = "Conservative (Half Position)"
+    # Market mood
+    mood_upper    = str(market_mood).upper()
+    nifty_emoji   = "🟢" if "BULLISH" in mood_upper else "🟡" if "NEUTRAL" in mood_upper or "CAUTIOUS" in mood_upper else "🔴"
+    position_size = "Normal / Aggressive" if "BULLISH" in mood_upper else "Normal" if "NEUTRAL" in mood_upper else "Conservative (Half Position)"
 
-    # Nifty Emoji
-    nifty_emoji = "🟡" if "NEUTRAL" in mood_upper or "CAUTIOUS" in mood_upper else "🟢" if "BULLISH" in mood_upper else "🔴"
-
-    message = f"""📊 <b>Finrio — Swing Recommendation</b>
-📅 {scanned_at} (IST)
-
-━━━━━━━━━━━━━━━━━━━━
-⭐ <b>{s.get("signal", "BUY")} | {s.get("sym")}</b>
-Sector: {s.get("sector", "Other")}{rank_str}
-
-Score: {score}/150
-Rating: {stars}
-
-━━━━━━━━━━━━━━━━━━━━
-
-💰 <b>Current Price</b>
-₹{price:,.2f}
-
-✅ <b>Buy Zone</b>
-{buy_zone_str}
-
-🛑 <b>Stop Loss</b>
-₹{sl_price:,.2f}
-Risk: -{sl_pct:.1f}%
-
-🎯 <b>Targets</b>
-T1 ₹{tgt1:,.2f} (+{tgt1_pct:.1f}%)  → 1:1.0
-T2 ₹{tgt2:,.2f} (+{tgt2_pct:.1f}%)  → 1:1.5
-T3 ₹{tgt3:,.2f} (+{tgt3_pct:.1f}%)  → 1:2.5
-
-⚖️ <b>Risk : Reward</b>
-1 : {rr:.1f}
-
-⏳ <b>Expected Holding</b>
-10–20 Trading Days
-
-━━━━━━━━━━━━━━━━━━━━
-📌 <b>Trade Setup</b>
-
-Type:
-* {"Pullback" if is_pullback else "Breakout" if is_breakout else "Trend Following"}
-
-Reasons:
-{reasons_str}
-
-━━━━━━━━━━━━━━━━━━━━
-📈 <b>Market Status</b>
-
-Nifty: {market_mood} {nifty_emoji}
-
-Suggested Position:
-{position_size}
-
-━━━━━━━━━━━━━━━━━━━━
-🎯 <b>Entry Strategy</b>
-
-{entry_strategy}
-
-━━━━━━━━━━━━━━━━━━━━
-📊 <b>Trade Management</b>
-
-Book 30% at Target 1
-
-Move Stop Loss to Entry after Target 1.
-
-Trail remaining quantity using:
-* Supertrend
-or
-* 20 EMA
-
-━━━━━━━━━━━━━━━━━━━━
-⚠️ <b>Avoid This Trade If</b>
-
-❌ Price closes below Stop Loss
-
-❌ Nifty turns strongly bearish
-
-❌ Breakout fails with heavy selling
-
-━━━━━━━━━━━━━━━━━━━━
-🏆 <b>Overall Verdict</b>
-
-{stars} {verdict}
-"""
+    message = (
+        f"📊 <b>Finrio — Swing Pick</b>\n"
+        f"📅 {scanned_at} (IST)\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⭐ <b>{s.get('signal', 'BUY')} | {s.get('sym')}</b>\n"
+        f"Sector: {s.get('sector', 'Other')}{rank_str}\n"
+        f"Score: {score}  {stars}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💰 Price      ₹{price:,.2f}\n"
+        f"✅ Buy Zone   {buy_zone_str}\n"
+        f"🛑 Stop Loss  ₹{sl_price:,.2f}  (-{sl_pct:.1f}%)\n\n"
+        f"🎯 T1  ₹{tgt1:,.2f}  (+{tgt1_pct:.1f}%)  →  1:1.0\n"
+        f"🎯 T2  ₹{tgt2:,.2f}  (+{tgt2_pct:.1f}%)  →  1:1.5\n"
+        f"🎯 T3  ₹{tgt3:,.2f}  (+{tgt3_pct:.1f}%)  →  1:2.5\n\n"
+        f"⚖️ Risk:Reward   1 : {rr:.1f}\n"
+        f"⏳ Hold Est.     {hold_duration}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>Trade Setup — {trade_type}</b>\n"
+        f"{reasons_str}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📈 Market: {market_mood} {nifty_emoji}\n"
+        f"Position: {position_size}\n\n"
+        f"🏆 <b>{verdict}</b>"
+    )
     return message
 
 
