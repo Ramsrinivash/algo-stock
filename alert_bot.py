@@ -263,14 +263,15 @@ def format_single_recommendation(s, scanned_at, market_mood):
         rank_str = f" | #{rank}/{total} in Sector"
 
     # Entry type and buy zone
-    is_pullback = s.get("pullbackBuy", False) or s.get("nearSupport", False) or s.get("nearEma20", False)
+    is_pullback = s.get("pullbackBuy", False)
     is_breakout = s.get("breakoutResistance", False) or s.get("breakout52w", False)
 
     if is_pullback:
-        low_zone     = max(s.get("support", price * 0.98), price * 0.98)
-        high_zone    = price
-        buy_zone_str = f"₹{low_zone:,.2f} – ₹{high_zone:,.2f}"
-        trade_type   = "Pullback Buy"
+        pb_level = s.get("pullbackLevel", "EMA")
+        pb_low   = s.get("pullbackZoneLow", price * 0.98)
+        pb_high  = s.get("pullbackZoneHigh", price * 1.02)
+        buy_zone_str = f"₹{pb_low:,.2f} – ₹{pb_high:,.2f}"
+        trade_type   = f"Pullback to {pb_level}"
     elif is_breakout:
         low_zone     = price
         high_zone    = price * 1.015
@@ -311,7 +312,40 @@ def format_single_recommendation(s, scanned_at, market_mood):
     if s.get("volSpike"):
         reasons.append(f"✅ Volume Spike ({s.get('volRatio', 1.0):.1f}x avg)")
 
+    # If it is a pullback setup, append pull back details under reasons
+    if is_pullback and s.get("pullbackFromHigh", 0) > 0:
+        pb_from = s.get("pullbackFromHigh", 0.0)
+        pb_drop = s.get("pullbackDropPct", 0.0)
+        reasons.append(f"↘️ Pulled back from high of ₹{pb_from:,.2f} (-{pb_drop:.1f}%)")
+
     reasons_str = "\n".join([f"  {r}" for r in reasons]) if reasons else "  Trend Following Setup"
+
+    # Timeframe Alignment Status (1W, 1D, 1H)
+    tf_align = []
+    # 1W
+    weekly_st = s.get("weeklySupertrendDir", "SELL")
+    if weekly_trend == "UPTREND" and weekly_st == "BUY":
+        w_status = "🟢 Bullish (Uptrend + Supertrend)"
+    elif weekly_trend == "UPTREND" or weekly_st == "BUY":
+        w_status = "🟡 Neutral"
+    else:
+        w_status = "🔴 Bearish"
+    tf_align.append(f"  • 1W (Weekly) : {w_status}")
+
+    # 1D
+    daily_trend = s.get("marketTrend", "UNKNOWN")
+    d_status = "🟢 Bullish" if daily_trend == "UPTREND" else "🟡 Neutral" if daily_trend == "SIDEWAYS" else "🔴 Bearish"
+    tf_align.append(f"  • 1D (Daily)  : {d_status}")
+
+    # 1H
+    h_trend = s.get("hourlyTrend", "UNKNOWN")
+    if h_trend != "UNKNOWN":
+        h_bull  = s.get("hourlyEmaBull", False)
+        h_status = "🟢 Bullish" if h_trend == "UPTREND" and h_bull else "🟡 Neutral" if h_trend == "UPTREND" or h_bull else "🔴 Bearish"
+        tf_align.append(f"  • 1H (Hourly) : {h_status}")
+    else:
+        tf_align.append(f"  • 1H (Hourly) : ── (No trigger yet)")
+    tf_align_str = "\n".join(tf_align)
 
     # Market mood
     mood_upper    = str(market_mood).upper()
@@ -338,11 +372,15 @@ def format_single_recommendation(s, scanned_at, market_mood):
         f"📌 <b>Trade Setup — {trade_type}</b>\n"
         f"{reasons_str}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⏳ <b>Timeframe Alignment</b>\n"
+        f"{tf_align_str}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
         f"📈 Market: {market_mood} {nifty_emoji}\n"
         f"Position: {position_size}\n\n"
         f"🏆 <b>{verdict}</b>"
     )
     return message
+
 
 
 # ── SEND SCAN ALERT ───────────────────────────────────────────

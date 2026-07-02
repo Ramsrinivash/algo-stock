@@ -140,6 +140,15 @@ def score_stock(s):
     if s.get("weeklyTrend") == "UPTREND":
         sc += WEIGHTS["weekly_bull"]
 
+    # Weekly EMA momentum — EMA9 > EMA25 on weekly chart (+3)
+    # (computed by calc_weekly but was never scored — now used)
+    if s.get("weeklyEmaBull", False):
+        sc += 3
+
+    # Weekly Supertrend also BUY (+3 extra)
+    if s.get("weeklySupertrendDir") == "BUY":
+        sc += 3
+
     # Supertrend: +5 if BUY, -10 if SELL (strong penalty)
     if s.get("supertrendDir") == "BUY":
         sc += WEIGHTS["supertrend_buy"]
@@ -292,6 +301,23 @@ def get_full_analysis(s, capital=100000):
     rr = s.get("rr", 0)
     if rr > 0 and rr < 1.5 and sig in ["BUY", "STRONG BUY", "WATCH"]:
         sig = "AVOID"  # R:R too low to trade
+
+    # ── Freshness Gate ────────────────────────────────────
+    # A BUY/STRONG BUY requires a FRESH trigger:
+    #   - Fresh EMA9/EMA21 crossover (within 3 days), OR
+    #   - Fresh Supertrend flip GREEN (within 3 days), OR
+    #   - Fresh 52-week breakout, OR
+    #   - Fresh resistance breakout
+    # Without any of these, the signal is capped at WATCH.
+    # This prevents stale crossover stocks from scoring BUY.
+    has_fresh_trigger = (
+        s.get("freshEmaCross", False)        # EMA9 crossed above EMA21 ≤ 3 days ago
+        or s.get("freshStFlip", False)       # Supertrend flipped GREEN ≤ 3 days ago
+        or s.get("breakout52w", False)       # 52-week breakout today
+        or s.get("breakoutResistance", False) # Resistance breakout today
+    )
+    if sig in ["BUY", "STRONG BUY"] and not has_fresh_trigger:
+        sig = "WATCH"   # Good stock, but no fresh entry trigger yet
 
     if sig in ["BUY", "STRONG BUY"]:
         verdict = "Strong setup - consider entering"

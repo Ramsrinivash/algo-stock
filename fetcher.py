@@ -202,3 +202,21 @@ def fetch_live_price(yahoo_sym):
     except Exception as e:
         print(f"[fetcher] Error fetching live price for {yahoo_sym}: {e}")
         return None
+
+
+def fetch_ohlcv_1h(yahoo_sym, period="60d"):
+    """
+    Fetch hourly (1h) OHLCV data for one stock from Yahoo Finance.
+    Used for multi-timeframe analysis of top candidates.
+    """
+    try:
+        df = yf.Ticker(yahoo_sym).history(period=period, interval="1h")
+        if df is None or df.empty:
+            return None
+        if len(df) < 10:
+            return None
+        return df[["Open", "High", "Low", "Close", "Volume"]].copy()
+    except Exception as e:
+        print(f"[fetcher] Error fetching 1h data for {yahoo_sym}: {e}")
+        return None
+

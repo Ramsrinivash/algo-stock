@@ -30,8 +30,8 @@ import time
 from datetime import datetime, timezone, timedelta
 
 from stocks     import STOCKS, NIFTY_SYM
-from fetcher    import fetch_ohlcv, fetch_nifty
-from indicators import calc_all, calc_weekly
+from fetcher    import fetch_ohlcv, fetch_nifty, fetch_ohlcv_1h
+from indicators import calc_all, calc_weekly, calc_1h_indicators
 from patterns   import detect_pattern, find_support_resistance
 from scorer     import (score_stock, get_signal,
                         get_momentum, get_full_analysis)
@@ -202,6 +202,28 @@ def scan_one(sym, yahoo_sym, name, sector, capital=100000, df_nifty=None):
     stock["trendContinuationScore"] = analysis["trendContinuationScore"]
     stock["signal"]  = analysis["signal"]
     stock["momentum"]= analysis["momentum"]
+
+    # Fetch 1H indicators only if stock signal is BUY/STRONG BUY (efficiency constraint)
+    if stock["signal"] in ["BUY", "STRONG BUY"]:
+        try:
+            df_1h = fetch_ohlcv_1h(yahoo_sym)
+            h_ind = calc_1h_indicators(df_1h)
+            stock.update(h_ind)
+        except Exception as e:
+            stock.update({
+                "hourlyEmaBull":    False,
+                "hourlyStDir":      "SELL",
+                "hourlyTrend":      "UNKNOWN",
+                "hourlyFreshCross": False,
+            })
+    else:
+        # Defaults if not a BUY/STRONG BUY candidate
+        stock.update({
+            "hourlyEmaBull":    False,
+            "hourlyStDir":      "SELL",
+            "hourlyTrend":      "UNKNOWN",
+            "hourlyFreshCross": False,
+        })
 
     # Add position sizing to stock dict
     stock["shares"]        = analysis["shares"]

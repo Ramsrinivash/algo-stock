@@ -174,33 +174,50 @@ def calc_ema_cross(series, fast=9, slow=21, lookback=3):
     return False
 
 
-# ── CHECK FRESH CROSSOVERS (EMA9/25 & SUPERTREND FLIP) ────────
-def check_fresh_crossovers(ema9_series, ema25_series, st_dir_series, lookback=3):
+# ── CHECK FRESH CROSSOVERS (EMA9/EMA21 & SUPERTREND FLIP) ────────
+def check_fresh_crossovers(ema9_series, ema21_series, st_dir_series, lookback=3):
     """
-    Detects if EMA9 crossed above EMA25 or if Supertrend flipped GREEN in last N days.
+    Detects if EMA9 crossed above EMA21 (standard) or Supertrend flipped GREEN
+    within the last N trading days.
+
+    Standardized to EMA9/EMA21 (matches TradingView, Zerodha, Dhan default).
+    The slow EMA21 is more widely watched than EMA25 by Indian retail.
+
+    Args:
+        ema9_series  : pd.Series → EMA9 values (daily)
+        ema21_series : pd.Series → EMA21 values (daily)
+        st_dir_series: pd.Series → Supertrend direction ('BUY'/'SELL')
+        lookback     : int       → how many recent candles to check (default 3)
+
+    Returns:
+        tuple: (fresh_ema, fresh_st, days_ago, trigger)
     """
     fresh_ema = False
-    fresh_st = False
-    days_ago = 0
-    trigger = ""
+    fresh_st  = False
+    days_ago  = 0
+    trigger   = ""
 
     for i in range(-1, -(lookback + 1), -1):
         try:
-            # Check EMA Crossover
-            crossed_ema = ema9_series.iloc[i] > ema25_series.iloc[i] and ema9_series.iloc[i-1] <= ema25_series.iloc[i-1]
-            
-            # Check Supertrend Flip
-            flipped_st = st_dir_series.iloc[i] == 'BUY' and st_dir_series.iloc[i-1] == 'SELL'
-            
+            # EMA9 crossed above EMA21 on day i
+            crossed_ema = (
+                ema9_series.iloc[i]   > ema21_series.iloc[i]
+                and ema9_series.iloc[i-1] <= ema21_series.iloc[i-1]
+            )
+            # Supertrend flipped from SELL to BUY on day i
+            flipped_st = (
+                st_dir_series.iloc[i]   == "BUY"
+                and st_dir_series.iloc[i-1] == "SELL"
+            )
             if crossed_ema and not fresh_ema:
                 fresh_ema = True
                 if not trigger:
-                    trigger = "EMA9 crossed above EMA25"
+                    trigger  = "EMA9 crossed above EMA21"
                     days_ago = abs(i)
             if flipped_st and not fresh_st:
                 fresh_st = True
                 if not trigger:
-                    trigger = "Supertrend flipped GREEN"
+                    trigger  = "Supertrend flipped GREEN"
                     days_ago = abs(i)
         except IndexError:
             pass
@@ -889,10 +906,14 @@ def calc_all(df, df_nifty=None):
     st_val = round(float(st_series.iloc[-1]), 2)
     st_dir = st_dir_series.iloc[-1]
 
-    # Fresh crossovers (EMA9/25 and Supertrend flip)
-    fresh_ema, fresh_st, days_ago, trigger = check_fresh_crossovers(ema9_series, ema25_series, st_dir_series, lookback=3)
+    # Fresh crossovers: EMA9/EMA21 (standardized) + Supertrend flip
+    # Use ema21_series computed from close (not ema25 — standardized)
+    ema21_series = close.ewm(span=21, adjust=False).mean()
+    fresh_ema, fresh_st, days_ago, trigger = check_fresh_crossovers(
+        ema9_series, ema21_series, st_dir_series, lookback=3
+    )
 
-    # EMA Crossover flag
+    # EMA Crossover flag (legacy: EMA9/EMA21, lookback 3)
     ema_cross = calc_ema_cross(close)
 
     # RSI Series
@@ -909,16 +930,15 @@ def calc_all(df, df_nifty=None):
     atr_val, atr_pct = calc_atr(df, 14)
 
     # ── R-Multiple Formula: 1R = 2 × ATR (industry standard) ─
-    # This is the corrected quant formula — risk per share = 2×ATR
-    # All targets are expressed as multiples of R for consistent R:R
-    R          = 2.0 * atr_val                         # 1R = risk per share
-    sl_price   = round(price - R, 2)                   # Entry - 1R
+    # risk per share = 2×ATR; all targets expressed as R-multiples
+    R          = 2.0 * atr_val
+    sl_price   = round(price - R, 2)
     sl_pct     = round(((price - sl_price) / price) * 100, 2) if price > 0 else 0.0
     sl_points  = R
-    tgt1       = round(price + (1.0 * R), 2)           # +1R  → R:R 1:1.0
-    tgt2       = round(price + (1.5 * R), 2)           # +1.5R → R:R 1:1.5
-    tgt3       = round(price + (2.5 * R), 2)           # +2.5R → R:R 1:2.5
-    rr_val     = round((tgt2 - price) / R, 1) if R > 0 else 0.0   # always ~1.5
+    tgt1       = round(price + (1.0 * R), 2)
+    tgt2       = round(price + (1.5 * R), 2)
+    tgt3       = round(price + (2.5 * R), 2)
+    rr_val     = round((tgt2 - price) / R, 1) if R > 0 else 0.0
 
     ema_bull_stack = bool(e9 > e21 > e50)
 
@@ -930,20 +950,42 @@ def calc_all(df, df_nifty=None):
     else:
         market_trend = "SIDEWAYS"
 
-    # Price data (needed by breakoutResistance and prediction)
+    # Price data (volRatio, gapUp, near52wHigh, breakout52w, etc.)
     _pd       = calc_price_data(df)
     vol_ratio = _pd.get("volRatio", 0)
 
-    # ── NEW: Pullback Buy Zone ────────────────────────────────
-    # Best swing entry: stock in uptrend, RSI cooling, price near EMA
-    near_ema20  = bool(e20 > 0 and abs(price - e20) / e20 <= 0.03)
-    near_ema50  = bool(e50 > 0 and abs(price - e50) / e50 <= 0.03)
+    # ── Pullback Buy Zone ──────────────────────────────────────
+    # Ideal swing entry: stock in uptrend, RSI cooling, price near key EMA
+    near_ema20 = bool(e20 > 0 and abs(price - e20) / e20 <= 0.03)
+    near_ema50 = bool(e50 > 0 and abs(price - e50) / e50 <= 0.03)
     pullback_buy = bool(
-        price > e50                       # in uptrend
-        and 40 <= r <= 58                 # RSI cooling (not overbought)
-        and (near_ema20 or near_ema50)    # touching EMA support
-        and e9 > e21                      # short-term momentum still positive
+        price > e50         # above 50 EMA → in uptrend
+        and 40 <= r <= 58   # RSI cooling but not breaking down
+        and (near_ema20 or near_ema50)  # touching key EMA support
+        and e9 > e21        # short-term momentum still positive
     )
+
+    # ── Pullback Zone Details ───────────────────────────────────
+    # Tell traders exactly WHICH EMA they're pulling back to and from where
+    if pullback_buy:
+        if near_ema20:
+            pb_level    = "EMA20"
+            pb_ema_val  = e20
+        else:
+            pb_level    = "EMA50"
+            pb_ema_val  = e50
+        # Zone: EMA ±2%
+        pb_zone_low  = round(pb_ema_val * 0.98, 2)
+        pb_zone_high = round(pb_ema_val * 1.02, 2)
+        # Swing high it pulled back FROM: highest close in last 20 days (excluding today)
+        pb_from_high = round(float(df["High"].iloc[-21:-1].max()), 2) if len(df) >= 22 else round(float(df["High"].max()), 2)
+        pb_drop_pct  = round(((pb_from_high - price) / pb_from_high) * 100, 1) if pb_from_high > 0 else 0.0
+    else:
+        pb_level     = ""
+        pb_zone_low  = 0.0
+        pb_zone_high = 0.0
+        pb_from_high = 0.0
+        pb_drop_pct  = 0.0
 
     # ── NEW: Resistance-Level Breakout ──────────────────────
     # Classic breakout: today's close > previous 20-day high + volume
@@ -1064,9 +1106,15 @@ def calc_all(df, df_nifty=None):
         "marketTrend":      market_trend,
         "higherHighsLows":  calc_higher_highs_lows(df),
         # Pullback Buy Zone
-        "pullbackBuy":      pullback_buy,
-        "nearEma20":        near_ema20,
-        "nearEma50":        near_ema50,
+        "pullbackBuy":         pullback_buy,
+        "nearEma20":           near_ema20,
+        "nearEma50":           near_ema50,
+        # Pullback Zone Details (populated only when pullbackBuy=True)
+        "pullbackLevel":       pb_level,       # which EMA: "EMA20" or "EMA50"
+        "pullbackZoneLow":     pb_zone_low,    # lower bound of the zone
+        "pullbackZoneHigh":    pb_zone_high,   # upper bound of the zone
+        "pullbackFromHigh":    pb_from_high,   # swing high stock pulled back from
+        "pullbackDropPct":     pb_drop_pct,    # % drop from swing high to current price
         # Resistance Breakout
         "breakoutResistance":  breakout_resistance,
         "prevResistance20d":   prev_resistance,
@@ -1126,6 +1174,78 @@ def calc_weekly(df_weekly):
         "weeklyEma25":          round(we25, 2),
         "weeklyEmaBull":        weekly_ema_bull,
     }
+
+
+# ── HOURLY TIMEFRAME INDICATORS ───────────────────────────────
+def calc_1h_indicators(df_1h):
+    """
+    Calculate key indicators from 1H (hourly) OHLCV data.
+    Called ONLY for stocks that already scored BUY on the daily scan,
+    to add multi-timeframe confirmation without slowing the full scan.
+
+    Args:
+        df_1h : DataFrame -> OHLCV with hourly candles (minimum 50 rows)
+
+    Returns:
+        dict:
+            hourlyEmaBull    : bool -> EMA9 above EMA21 on 1H
+            hourlyStDir      : str  -> 'BUY' or 'SELL' on 1H Supertrend
+            hourlyTrend      : str  -> 'UPTREND' / 'DOWNTREND' / 'SIDEWAYS'
+            hourlyFreshCross : bool -> EMA9 crossed EMA21 in last 3 hourly bars
+    """
+    _empty = {
+        "hourlyEmaBull":    False,
+        "hourlyStDir":      "SELL",
+        "hourlyTrend":      "UNKNOWN",
+        "hourlyFreshCross": False,
+    }
+    if df_1h is None or len(df_1h) < 50:
+        return _empty
+
+    try:
+        close   = df_1h["Close"]
+        h_e9    = close.ewm(span=9,  adjust=False).mean()
+        h_e21   = close.ewm(span=21, adjust=False).mean()
+        h_e50   = close.ewm(span=50, adjust=False).mean()
+        price_h = float(close.iloc[-1])
+
+        he9_v  = float(h_e9.iloc[-1])
+        he21_v = float(h_e21.iloc[-1])
+        he50_v = float(h_e50.iloc[-1])
+
+        # Fresh EMA9/EMA21 cross on hourly (last 3 bars)
+        h_fresh = False
+        for i in range(-1, -4, -1):
+            try:
+                if h_e9.iloc[i] > h_e21.iloc[i] and h_e9.iloc[i-1] <= h_e21.iloc[i-1]:
+                    h_fresh = True
+                    break
+            except IndexError:
+                pass
+
+        # Hourly Supertrend
+        try:
+            _, h_st_dir = calc_supertrend(df_1h, 10, 3)
+        except Exception:
+            h_st_dir = "SELL"
+
+        # Hourly trend classification
+        if price_h > he21_v > he50_v:
+            h_trend = "UPTREND"
+        elif price_h < he21_v and he21_v < he50_v:
+            h_trend = "DOWNTREND"
+        else:
+            h_trend = "SIDEWAYS"
+
+        return {
+            "hourlyEmaBull":    bool(he9_v > he21_v),
+            "hourlyStDir":      h_st_dir,
+            "hourlyTrend":      h_trend,
+            "hourlyFreshCross": h_fresh,
+        }
+    except Exception:
+        return _empty
+
 
 
 # ── TEST ──────────────────────────────────────────────────────
