@@ -109,6 +109,15 @@ def init_db():
         )
     """)
 
+    # Settings cache table to prevent config resets on restarts/deploys (Render ephemeral fix)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS settings_cache (
+            id INTEGER PRIMARY KEY,
+            json_data TEXT NOT NULL,
+            updated_at VARCHAR(50) NOT NULL
+        )
+    """)
+
     # Watchlist Alerts table
     if DATABASE_URL:
         cursor.execute("""
@@ -456,6 +465,54 @@ def mark_watchlist_alert_triggered(alert_id):
     except Exception as e:
         print(f"[history_db] Error triggering watchlist alert: {e}")
         return False
+    finally:
+        conn.close()
+
+def save_settings_to_db(settings_dict):
+    """Persist settings dict to database cache to survive server restarts/deploys."""
+    init_db()
+    conn = get_connection()
+    cursor = get_cursor(conn)
+    try:
+        import json
+        json_str = json.dumps(settings_dict)
+        updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        if DATABASE_URL:
+            cursor.execute("""
+                INSERT INTO settings_cache (id, json_data, updated_at)
+                VALUES (1, %s, %s)
+                ON CONFLICT (id) DO UPDATE 
+                SET json_data = EXCLUDED.json_data, updated_at = EXCLUDED.updated_at
+            """, (json_str, updated_at))
+        else:
+            cursor.execute("""
+                INSERT OR REPLACE INTO settings_cache (id, json_data, updated_at)
+                VALUES (1, ?, ?)
+            """, (json_str, updated_at))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"[history_db] Error saving settings cache to DB: {e}")
+        return False
+    finally:
+        conn.close()
+
+def load_settings_from_db():
+    """Retrieve the persistently cached settings from database."""
+    init_db()
+    conn = get_connection()
+    cursor = get_cursor(conn)
+    try:
+        cursor.execute("SELECT json_data FROM settings_cache WHERE id = 1")
+        row = cursor.fetchone()
+        if row:
+            import json
+            return json.loads(row["json_data"])
+        return None
+    except Exception as e:
+        print(f"[history_db] Error loading settings cache from DB: {e}")
+        return None
     finally:
         conn.close()
 

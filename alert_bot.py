@@ -39,17 +39,34 @@ DEFAULT_SETTINGS = {
 
 # ── LOAD / SAVE SETTINGS ─────────────────────────────────────
 def load_settings():
-    """Load settings.json and fallback to environment variables."""
+    """Load settings from database cache, fallback to settings.json and environment variables."""
     settings = dict(DEFAULT_SETTINGS)
     saved = {}
-    if os.path.exists(SETTINGS_FILE):
+
+    # 1. Try to load from database first (survives restarts/deploys on Render)
+    try:
+        import history_db
+        db_settings = history_db.load_settings_from_db()
+        if db_settings:
+            saved = db_settings
+    except Exception as e:
+        print(f"[alert_bot] Database load settings error: {e}")
+
+    # 2. If database is empty, fall back to settings.json
+    if not saved and os.path.exists(SETTINGS_FILE):
         try:
             with open(SETTINGS_FILE, "r") as f:
                 saved = json.load(f)
+                # If we read settings from file, save them to DB cache for future persistence
+                if saved:
+                    try:
+                        history_db.save_settings_to_db(saved)
+                    except Exception:
+                        pass
         except Exception as e:
             print(f"[alert_bot] Error loading settings: {e}")
 
-    # Fallback to Environment Variables if not saved or empty in settings.json
+    # Fallback to Environment Variables if not saved or empty
     if saved.get("telegram_token"):
         settings["telegram_token"] = saved["telegram_token"]
     else:
@@ -71,7 +88,7 @@ def load_settings():
         if env_enabled is not None:
             settings["alerts_enabled"] = env_enabled.lower() in ["true", "1", "yes"]
 
-    # Load other config keys from settings.json
+    # Load other config keys
     for k, v in saved.items():
         if k not in ["telegram_token", "telegram_chat_id", "alerts_enabled"]:
             settings[k] = v
@@ -80,16 +97,30 @@ def load_settings():
 
 
 def save_settings(data):
-    """Save settings dict to settings.json. Returns True on success."""
+    """Save settings dict to settings.json and database cache. Returns True on success."""
     try:
         current = load_settings()
         current.update(data)
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(current, f, indent=2)
+        
+        # Save to settings.json
+        try:
+            with open(SETTINGS_FILE, "w") as f:
+                json.dump(current, f, indent=2)
+        except Exception as file_err:
+            print(f"[alert_bot] Error writing settings.json: {file_err}")
+            
+        # Save to database cache (so it survives restarts/deploys on Render)
+        try:
+            import history_db
+            history_db.save_settings_to_db(current)
+        except Exception as db_err:
+            print(f"[alert_bot] Error saving settings to DB: {db_err}")
+            
         return True
     except Exception as e:
         print(f"[alert_bot] Error saving settings: {e}")
         return False
+
 
 
 # ── TELEGRAM SEND ─────────────────────────────────────────────
