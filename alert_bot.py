@@ -284,14 +284,17 @@ def format_single_recommendation(s, scanned_at, market_mood):
         trade_type   = "Trend Following"
 
     # Signal age — shows how fresh the crossover is (A5 fix)
+    # indicators.py exports key="trigger" (not "triggerLabel")
     days_ago    = s.get("daysAgo", 0)
-    trigger_str = s.get("triggerLabel", "")
-    if days_ago == 0 or days_ago is None:
-        signal_age_str = "Trigger: Today"
+    trigger_str = s.get("trigger", "")          # e.g. "EMA9 crossed above EMA21" or "Supertrend flipped GREEN"
+    if not trigger_str:
+        signal_age_str = "Trigger: Continuation (No fresh crossover)"
     elif days_ago == 1:
-        signal_age_str = f"Trigger: 1 day ago  ({trigger_str})"
+        signal_age_str = f"Trigger: Today (Fresh — {trigger_str})"
+    elif days_ago == 2:
+        signal_age_str = f"Trigger: 1 trading day ago  ({trigger_str})"
     else:
-        signal_age_str = f"Trigger: {int(days_ago)} days ago  ({trigger_str})"
+        signal_age_str = f"Trigger: {int(days_ago - 1)} trading days ago  ({trigger_str})"
 
     # Setup reasons — only include what's actually true for this stock
     st_dir      = s.get("supertrendDir", "")
