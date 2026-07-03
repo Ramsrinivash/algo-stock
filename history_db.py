@@ -155,8 +155,8 @@ def save_scan_to_history(summary):
     if not summary:
         return False
 
-    init_db()  # Safety check
-
+    # H1 fix: init_db() removed from here — called once at startup in app.py
+    # Calling CREATE TABLE IF NOT EXISTS on every scan is wasteful
     conn = get_connection()
     cursor = get_cursor(conn)
 

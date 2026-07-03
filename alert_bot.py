@@ -283,6 +283,16 @@ def format_single_recommendation(s, scanned_at, market_mood):
         buy_zone_str = f"₹{low_zone:,.2f} – ₹{high_zone:,.2f}"
         trade_type   = "Trend Following"
 
+    # Signal age — shows how fresh the crossover is (A5 fix)
+    days_ago    = s.get("daysAgo", 0)
+    trigger_str = s.get("triggerLabel", "")
+    if days_ago == 0 or days_ago is None:
+        signal_age_str = "Trigger: Today"
+    elif days_ago == 1:
+        signal_age_str = f"Trigger: 1 day ago  ({trigger_str})"
+    else:
+        signal_age_str = f"Trigger: {int(days_ago)} days ago  ({trigger_str})"
+
     # Setup reasons — only include what's actually true for this stock
     st_dir      = s.get("supertrendDir", "")
     weekly_trend = s.get("weeklyTrend", "")
@@ -354,7 +364,8 @@ def format_single_recommendation(s, scanned_at, market_mood):
 
     message = (
         f"📊 <b>Finrio — Swing Pick</b>\n"
-        f"📅 {scanned_at} (IST)\n\n"
+        f"📅 {scanned_at} (IST)\n"
+        f"🕒 {signal_age_str}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"⭐ <b>{s.get('signal', 'BUY')} | {s.get('sym')}</b>\n"
         f"Sector: {s.get('sector', 'Other')}{rank_str}\n"
@@ -379,6 +390,12 @@ def format_single_recommendation(s, scanned_at, market_mood):
         f"Position: {position_size}\n\n"
         f"🏆 <b>{verdict}</b>"
     )
+
+    # A3 fix: Telegram HTML mode limit = 4096 chars. Truncate safely if too long.
+    MAX_TG_LEN = 4000
+    if len(message) > MAX_TG_LEN:
+        message = message[:MAX_TG_LEN] + "\n\n⚠️ <i>(Message truncated — too long)</i>"
+
     return message
 
 

@@ -822,9 +822,17 @@ def calc_mansfield_rs(stock_close, nifty_close, period=50):
         return 0.0
         
     base_rs = ratio.rolling(window=period).mean()
+
+    # Guard: if base_rs is zero (data corruption), avoid ZeroDivisionError (I6 fix)
+    if base_rs.iloc[-1] == 0 or base_rs.isnull().all():
+        return 0.0
+
     mansfield_rs = ((ratio / base_rs) - 1) * 10
-    
-    return round(float(mansfield_rs.iloc[-1]), 2)
+
+    val = float(mansfield_rs.iloc[-1])
+    if not (val == val):   # NaN check (NaN != NaN)
+        return 0.0
+    return round(val, 2)
 
 
 # ── VOLATILITY CONTRACTION PATTERN (VCP) & VOL DRY-UP (VDU) ──
@@ -907,8 +915,9 @@ def calc_all(df, df_nifty=None):
     st_dir = st_dir_series.iloc[-1]
 
     # Fresh crossovers: EMA9/EMA21 (standardized) + Supertrend flip
-    # Use ema21_series computed from close (not ema25 — standardized)
-    ema21_series = close.ewm(span=21, adjust=False).mean()
+    # Reuse ema21_series from the series already computed via calc_ema(close, 21) above
+    # (avoids duplicate ewm computation — I2 fix)
+    ema21_series = close.ewm(span=21, adjust=False).mean()  # single source of truth
     fresh_ema, fresh_st, days_ago, trigger = check_fresh_crossovers(
         ema9_series, ema21_series, st_dir_series, lookback=3
     )
@@ -916,15 +925,17 @@ def calc_all(df, df_nifty=None):
     # EMA Crossover flag (legacy: EMA9/EMA21, lookback 3)
     ema_cross = calc_ema_cross(close)
 
-    # RSI Series
+    # RSI — reuse calc_rsi() to avoid duplicate inline implementation (I3 fix)
+    rsi_s = None  # not needed as a series below; only r (scalar) is used
+    r     = calc_rsi(close, 14)
+    # Build the rsi series for movement prediction (needed by calc_movement_prediction)
     delta    = close.diff()
     gain     = delta.clip(lower=0)
     loss     = (-delta).clip(lower=0)
     avg_gain = gain.ewm(alpha=1/14, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/14, adjust=False).mean()
     rs       = avg_gain / avg_loss
-    rsi_s    = 100 - (100 / (1 + rs))
-    r        = round(float(rsi_s.iloc[-1]), 2)
+    rsi_s    = 100 - (100 / (1 + rs))   # kept for calc_movement_prediction(rsi_s)
 
     # ATR
     atr_val, atr_pct = calc_atr(df, 14)
@@ -959,10 +970,10 @@ def calc_all(df, df_nifty=None):
     near_ema20 = bool(e20 > 0 and abs(price - e20) / e20 <= 0.03)
     near_ema50 = bool(e50 > 0 and abs(price - e50) / e50 <= 0.03)
     pullback_buy = bool(
-        price > e50         # above 50 EMA → in uptrend
-        and 40 <= r <= 58   # RSI cooling but not breaking down
+        market_trend == "UPTREND"   # confirmed uptrend — not just price > e50 (I4 fix)
+        and 40 <= r <= 58           # RSI cooling but not breaking down
         and (near_ema20 or near_ema50)  # touching key EMA support
-        and e9 > e21        # short-term momentum still positive
+        and e9 > e21                # short-term momentum still positive
     )
 
     # ── Pullback Zone Details ───────────────────────────────────
@@ -1000,8 +1011,9 @@ def calc_all(df, df_nifty=None):
         and price > e50              # above key EMA
     )
 
-    # ── Supertrend (10, 3) ───────────────────────────────────
-    st_val, st_dir = calc_supertrend(df, 10, 3)
+    # ── Supertrend (10, 3) — already computed above via calc_supertrend_full() ──
+    # st_val and st_dir are set at lines 906-907; no duplicate call needed (I1 fix)
+
 
     # ── Bollinger Bands (20, 2) ──────────────────────────────
     bb_data = calc_bollinger(df)

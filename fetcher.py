@@ -220,3 +220,48 @@ def fetch_ohlcv_1h(yahoo_sym, period="60d"):
         print(f"[fetcher] Error fetching 1h data for {yahoo_sym}: {e}")
         return None
 
+
+def fetch_weekly_and_cap(yahoo_sym):
+    """
+    Fetch weekly OHLCV + market cap in a single Ticker session.
+    Moved from scanner.py into fetcher.py so that all yfinance
+    access lives in one place (SC1 fix from audit).
+
+    Args:
+        yahoo_sym : str → e.g. "HDFCBANK.NS"
+
+    Returns:
+        tuple: (df_weekly, mkt_cap_cr, cap_cat)
+            df_weekly   → DataFrame or None
+            mkt_cap_cr  → Market cap in ₹ Crore (float), 0 if unavailable
+            cap_cat     → "Large Cap" / "Mid Cap" / "Small Cap" / "Unknown"
+    """
+    try:
+        ticker    = yf.Ticker(yahoo_sym)
+        df_weekly = ticker.history(period="2y", interval="1wk")
+        if df_weekly is not None and not df_weekly.empty:
+            df_weekly = df_weekly[["Open", "High", "Low", "Close", "Volume"]].copy()
+        else:
+            df_weekly = None
+
+        # Market Cap — from fast_info (cached, minimal network cost)
+        try:
+            raw_cap    = getattr(ticker.fast_info, "market_cap", None) or 0
+            mkt_cap_cr = round(raw_cap / 1e7, 0)   # Convert to ₹ Crore
+            if mkt_cap_cr >= 50000:
+                cap_cat = "Large Cap"
+            elif mkt_cap_cr >= 5000:
+                cap_cat = "Mid Cap"
+            elif mkt_cap_cr > 0:
+                cap_cat = "Small Cap"
+            else:
+                mkt_cap_cr = 0
+                cap_cat    = "Unknown"
+        except Exception:
+            mkt_cap_cr = 0
+            cap_cat    = "Unknown"
+
+        return df_weekly, mkt_cap_cr, cap_cat
+
+    except Exception:
+        return None, 0, "Unknown"

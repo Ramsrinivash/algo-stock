@@ -30,7 +30,7 @@ import time
 from datetime import datetime, timezone, timedelta
 
 from stocks     import STOCKS, NIFTY_SYM
-from fetcher    import fetch_ohlcv, fetch_nifty, fetch_ohlcv_1h
+from fetcher    import fetch_ohlcv, fetch_nifty, fetch_ohlcv_1h, fetch_weekly_and_cap
 from indicators import calc_all, calc_weekly, calc_1h_indicators
 from patterns   import detect_pattern, find_support_resistance
 from scorer     import (score_stock, get_signal,
@@ -98,37 +98,8 @@ def scan_one(sym, yahoo_sym, name, sector, capital=100000, df_nifty=None):
             "error":  "Could not fetch data or insufficient history"
         }
 
-    # ── Step 1b: Weekly OHLCV + Market Cap (single Ticker session) ─
-    try:
-        import yfinance as yf
-        ticker     = yf.Ticker(yahoo_sym)
-        df_weekly  = ticker.history(period="2y", interval="1wk")
-        if df_weekly is not None and not df_weekly.empty:
-            df_weekly = df_weekly[["Open","High","Low","Close","Volume"]].copy()
-        else:
-            df_weekly = None
-
-        # Market Cap — from fast_info (cached, minimal cost)
-        try:
-            raw_cap    = getattr(ticker.fast_info, "market_cap", None) or 0
-            mkt_cap_cr = round(raw_cap / 1e7, 0)   # Convert to ₹Crore (1Cr = 10M)
-            if mkt_cap_cr >= 50000:
-                cap_cat = "Large Cap"
-            elif mkt_cap_cr >= 5000:
-                cap_cat = "Mid Cap"
-            elif mkt_cap_cr > 0:
-                cap_cat = "Small Cap"
-            else:
-                mkt_cap_cr = 0
-                cap_cat    = "Unknown"
-        except Exception:
-            mkt_cap_cr = 0
-            cap_cat    = "Unknown"
-
-    except Exception:
-        df_weekly  = None
-        mkt_cap_cr = 0
-        cap_cat    = "Unknown"
+    # ── Step 1b: Weekly OHLCV + Market Cap (via fetcher.py — SC1 fix) ────
+    df_weekly, mkt_cap_cr, cap_cat = fetch_weekly_and_cap(yahoo_sym)
 
     # ── Step 2: Calculate Indicators ──────────────────────
     try:
@@ -309,7 +280,9 @@ def scan_all(stocks_list=None, capital=100000, verbose=True, progress_callback=N
             err_count += 1
 
         results.append(stock)
-        time.sleep(SCAN_DELAY)
+        # SC3 fix: skip delay for stocks that errored out (no Yahoo data fetched)
+        if stock["status"] == "ok":
+            time.sleep(SCAN_DELAY)
 
     # Sort by score descending
     results.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -465,7 +438,8 @@ def run_full_scan(stocks_list=None, capital=100000, verbose=True, progress_callb
     # Print final report
     if verbose:
         ok_stocks  = [s for s in results if s["status"] == "ok"]
-        buy_list   = [s for s in ok_stocks if s["signal"] == "BUY"]
+        # SC5 fix: include STRONG BUY in the BUY print list (was filtering them out)
+        buy_list   = [s for s in ok_stocks if s["signal"] in ["BUY", "STRONG BUY"]]
         watch_list = [s for s in ok_stocks if s["signal"] == "WATCH"]
 
         print()

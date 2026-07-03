@@ -82,8 +82,9 @@ def load_data_file():
         try:
             with open(DATA_FILE, "r") as f:
                 return json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            # AP4 fix: log what went wrong instead of silently ignoring it
+            print(f"[app] Warning: screener_data.json could not be read ({e}). Falling back to DB.")
 
     # Recovery: Load from database cache if local file is missing/corrupted
     try:
@@ -227,6 +228,13 @@ def keep_awake_and_schedule_loop():
             print(f"[scheduler] Loop exception: {ex}", flush=True)
             
         time.sleep(30) # check time every 30 seconds
+
+# Call init_db once at startup so tables are ready before any scan runs (H1 companion fix)
+try:
+    import history_db as _hdb
+    _hdb.init_db()
+except Exception as _e:
+    print(f"[app] Warning: DB init failed: {_e}")
 
 # Start keep-awake scheduler thread on app initialization
 scheduler_thread = threading.Thread(target=keep_awake_and_schedule_loop)

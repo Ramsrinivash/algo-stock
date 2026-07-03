@@ -30,32 +30,26 @@
 # =============================================================
 
 # ── SCORE WEIGHTS ─────────────────────────────────────────────
+# These values MUST match the max pts in each section of score_stock() below.
+# If you change a section's max pts, update the corresponding key here too.
 WEIGHTS = {
-    # Core 100-pt scorecard
-    "rsi_ideal":          20,   # RSI 52-65
-    "rsi_ok":             12,   # RSI 65-70
-    "rsi_recovering":      8,   # RSI 45-52
-    "ema50_ideal":        25,   # 0-4% above EMA50 (PRIMARY signal)
-    "ema50_ok":           18,   # 4-8% above EMA50
-    "ema50_extended":      8,   # 8-15% above EMA50
-    "macd_full":          15,   # MACD bull + rising histogram
-    "macd_partial":        8,   # MACD bull only (line > signal)
-    "macd_turning":        5,   # Histogram turning up
-    "atr_ideal":          15,   # ATR% >= 3.0
-    "atr_ok":             10,   # ATR% >= 2.0
-    "atr_min":             5,   # ATR% >= 1.5
-    "vol_ideal":          10,   # Volume >= 2x
-    "vol_ok":              6,   # Volume >= 1.3x
-    "adx_strong":         10,   # ADX >= 30
-    "adx_ok":              6,   # ADX >= 25
-    "ema20_ok":            5,   # 0-5% above EMA20
-    "bb_mid":              5,   # BB position 40-75%
-    # Bonuses
-    "weekly_bull":         5,
-    "supertrend_buy":      5,
-    "breakout_52w":        5,
-    "pullback_buy":        5,
-    "mansfield_rs_bull":   5,
+    # Core scoring sections (max pts per section)
+    "freshness_max":      20,   # 1-day old cross = 20pts, 2d = 14, 3d = 9, else 0
+    "supertrend_dist":    15,   # ST BUY within 4% = 15, within 8% = 9, else 4
+    "adx_strong":         15,   # ADX >= 30 = 15, >= 25 = 11, >= 20 = 6, < 20 = 0
+    "volume_max":         13,   # >= 2x = 13, >= 1.5x = 9, >= 0.8x = 5, < 0.8x = -5
+    "rsi_max":            13,   # RSI near 60 = 13, near 50-70 = 8, else = 4
+    "atr_max":            13,   # ATR% >= 2.5 = 13, >= 1.8 = 8, else = 4
+    "ema_gap_max":        11,   # EMA9/EMA21 gap <= 3% = 11, <= 6% = 6, else = 2
+    # Bonus points
+    "weekly_bull":         5,   # Weekly trend UPTREND
+    "weekly_ema_bull":     3,   # Weekly EMA9 > EMA25
+    "weekly_st_buy":       3,   # Weekly Supertrend BUY
+    "supertrend_buy":      5,   # Daily Supertrend BUY
+    "supertrend_sell":   -10,   # Daily Supertrend SELL (penalty)
+    "breakout_52w":        5,   # 52-week high breakout
+    "pullback_buy":        5,   # Pullback to key EMA
+    "mansfield_rs_bull":   5,   # Outperforming Nifty 50
 }
 
 # Signal thresholds (recalibrated for new scoring system)
@@ -100,16 +94,21 @@ def score_stock(s):
         sc += 0  # No Supertrend BUY proximity bonus if in SELL mode
 
     # 3. ADX strength (15 pts)
+    # ADX measures trend strength, NOT direction.
+    # Weak trend (< 20) = no trend worth trading = 0 pts (S3 fix: was wrongly 6)
     adx_val = s.get("adxVal", s.get("adx", 0))
     if adx_val >= 30:   sc += 15
     elif adx_val >= 25: sc += 11
-    else:               sc += 6
+    elif adx_val >= 20: sc += 6
+    else:               sc += 0   # Directionless / choppy — no bonus
 
     # 4. Volume (13 pts)
+    # Low volume (< 0.8x avg) is penalized — accumulation requires participation (S4 fix)
     vol_ratio = s.get("volRatio", s.get("vol_ratio", 1.0))
-    if vol_ratio >= 2.0:   sc += 13
-    elif vol_ratio >= 1.5: sc += 9
-    else:                  sc += 5
+    if vol_ratio >= 2.0:    sc += 13
+    elif vol_ratio >= 1.5:  sc += 9
+    elif vol_ratio >= 0.8:  sc += 5
+    else:                   sc -= 5   # Very low volume = negative signal
 
     # 5. RSI (13 pts)
     rsi_val = s.get("rsi", 50)
@@ -123,16 +122,17 @@ def score_stock(s):
     elif atr_pct >= 1.8: sc += 8
     else:                sc += 4
 
-    # 7. EMA gap tightness (11 pts)
-    ema9 = s.get("ema9", 0)
-    ema25 = s.get("ema25", 0)
-    if ema25 > 0 and ema9 >= ema25:
-        ema_gap = ((ema9 - ema25) / ema25) * 100
-        if ema_gap <= 3:    sc += 11
+    # 7. EMA gap tightness — EMA9 vs EMA21 (11 pts)
+    # Fixed: now uses ema21 to match standardized EMA9/EMA21 crossover (S2 fix)
+    ema9  = s.get("ema9", 0)
+    ema21 = s.get("ema21", 0)
+    if ema21 > 0 and ema9 >= ema21:
+        ema_gap = ((ema9 - ema21) / ema21) * 100
+        if ema_gap <= 3:    sc += 11   # Very tight — just crossed, fresh
         elif ema_gap <= 6:  sc += 6
-        else:               sc += 2
+        else:               sc += 2    # Wide gap — too extended
     else:
-        sc += 0  # No points if ema9 is below ema25
+        sc += 0  # ema9 below ema21 = bearish momentum — no bonus
 
     # Removed early return to allow bonus scoring logic
 
