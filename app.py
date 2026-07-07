@@ -483,8 +483,10 @@ def api_status():
     db_diagnostics = {}
     try:
         import history_db
-        db_mode = "PostgreSQL" if history_db.DATABASE_URL else "SQLite"
+        db_mode = "PostgreSQL" if history_db.USING_POSTGRES else "SQLite"
         db_diagnostics["db_mode"] = db_mode
+        db_diagnostics["psycopg2_import_error"] = history_db.psycopg2_import_error
+
         try:
             cached_settings = history_db.load_settings_from_db()
             db_diagnostics["settings_cache_status"] = "read_ok"

@@ -14,18 +14,21 @@ from datetime import datetime
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # Import Postgres packages if available
+psycopg2_import_error = None
 try:
     import psycopg2
     import psycopg2.extras
-except ImportError:
+except Exception as e:
     psycopg2 = None
-    print("[history_db] WARNING: psycopg2-binary not installed. PostgreSQL mode will be unavailable.")
+    psycopg2_import_error = str(e)
+    print(f"[history_db] WARNING: psycopg2 import failed: {e}")
 
+USING_POSTGRES = (DATABASE_URL is not None) and (psycopg2 is not None)
 DB_FILE = "screener_history.db"
 
 def get_connection():
     """Returns a database connection (PostgreSQL or SQLite)."""
-    if DATABASE_URL:
+    if USING_POSTGRES:
         # PostgreSQL
         conn = psycopg2.connect(DATABASE_URL)
         return conn
@@ -36,9 +39,10 @@ def get_connection():
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
+
 def get_cursor(conn):
     """Returns a database cursor with dict factory support."""
-    if DATABASE_URL:
+    if USING_POSTGRES:
         # Returns a dict-like cursor for PostgreSQL
         return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     else:
@@ -51,7 +55,7 @@ def init_db():
     conn = get_connection()
     cursor = get_cursor(conn)
 
-    if DATABASE_URL:
+    if USING_POSTGRES:
         # PostgreSQL Schema
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS scans (
@@ -119,7 +123,7 @@ def init_db():
     """)
 
     # Watchlist Alerts table
-    if DATABASE_URL:
+    if USING_POSTGRES:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS watchlist_alerts (
                 id SERIAL PRIMARY KEY,
@@ -177,7 +181,7 @@ def save_scan_to_history(summary):
         nifty_mood = nifty.get("mood", "NEUTRAL")
 
         # 1. Guard check & update/insert scans entry
-        if DATABASE_URL:
+        if USING_POSTGRES:
             # Postgres: Cast scanned_at string to date for comparison
             cursor.execute(
                 "SELECT id FROM scans WHERE CAST(scanned_at AS DATE) = CAST(%s AS DATE)",
@@ -230,7 +234,7 @@ def save_scan_to_history(summary):
                 ))
 
         if stocks_to_insert:
-            if DATABASE_URL:
+            if USING_POSTGRES:
                 cursor.executemany("""
                     INSERT INTO history_records (scan_id, sym, price, change, rsi, score, signal)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -246,7 +250,7 @@ def save_scan_to_history(summary):
         json_str = json.dumps(summary)
         updated_at = scanned_at
         
-        if DATABASE_URL:
+        if USING_POSTGRES:
             cursor.execute("""
                 INSERT INTO latest_scan_cache (id, json_data, updated_at)
                 VALUES (1, %s, %s)
@@ -287,7 +291,7 @@ def get_score_history(sym, limit=15):
     cursor = get_cursor(conn)
 
     try:
-        if DATABASE_URL:
+        if USING_POSTGRES:
             cursor.execute("""
                 SELECT s.scanned_at, r.score, r.price, r.signal, r.rsi
                 FROM history_records r
@@ -351,7 +355,7 @@ def has_scan_run_today():
     conn = get_connection()
     cursor = get_cursor(conn)
     try:
-        if DATABASE_URL:
+        if USING_POSTGRES:
             # PostgreSQL
             cursor.execute("SELECT id FROM scans WHERE CAST(scanned_at AS DATE) = CAST(%s AS DATE)", (current_date,))
         else:
@@ -372,7 +376,7 @@ def add_watchlist_alert(sym, yahoo, target_price, condition):
     conn = get_connection()
     cursor = get_cursor(conn)
     try:
-        if DATABASE_URL:
+        if USING_POSTGRES:
             cursor.execute("""
                 INSERT INTO watchlist_alerts (sym, yahoo, target_price, alert_condition)
                 VALUES (%s, %s, %s, %s)
@@ -413,7 +417,7 @@ def delete_watchlist_alert(alert_id):
     conn = get_connection()
     cursor = get_cursor(conn)
     try:
-        if DATABASE_URL:
+        if USING_POSTGRES:
             cursor.execute("DELETE FROM watchlist_alerts WHERE id = %s", (alert_id,))
         else:
             cursor.execute("DELETE FROM watchlist_alerts WHERE id = ?", (alert_id,))
@@ -448,7 +452,7 @@ def mark_watchlist_alert_triggered(alert_id):
     conn = get_connection()
     cursor = get_cursor(conn)
     try:
-        if DATABASE_URL:
+        if USING_POSTGRES:
             cursor.execute("""
                 UPDATE watchlist_alerts 
                 SET is_active = 0, triggered_at = CURRENT_TIMESTAMP 
@@ -478,7 +482,7 @@ def save_settings_to_db(settings_dict):
         json_str = json.dumps(settings_dict)
         updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        if DATABASE_URL:
+        if USING_POSTGRES:
             cursor.execute("""
                 INSERT INTO settings_cache (id, json_data, updated_at)
                 VALUES (1, %s, %s)
