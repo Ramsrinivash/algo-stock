@@ -479,6 +479,27 @@ def api_status():
     stock_count = len(data.get("stocks", [])) if data else 0
     total_len   = len(stock_manager.get_all_stocks(STOCKS))
 
+    # Database diagnostics self-check
+    db_diagnostics = {}
+    try:
+        import history_db
+        db_mode = "PostgreSQL" if history_db.DATABASE_URL else "SQLite"
+        db_diagnostics["db_mode"] = db_mode
+        try:
+            cached_settings = history_db.load_settings_from_db()
+            db_diagnostics["settings_cache_status"] = "read_ok"
+            db_diagnostics["settings_cache_exists"] = cached_settings is not None
+            if cached_settings:
+                tok = cached_settings.get("telegram_token", "")
+                masked = "••••••" + tok[-5:] if tok and len(tok) > 10 else ""
+                db_diagnostics["cached_alerts_enabled"] = cached_settings.get("alerts_enabled")
+                db_diagnostics["cached_chat_id"] = cached_settings.get("telegram_chat_id")
+                db_diagnostics["cached_token_masked"] = masked
+        except Exception as read_err:
+            db_diagnostics["settings_cache_status"] = f"read_error: {read_err}"
+    except Exception as db_err:
+        db_diagnostics["status"] = f"db_init_error: {db_err}"
+
     return jsonify({
         "status":      "ok",
         "server":      "Finrio AI API",
@@ -486,6 +507,7 @@ def api_status():
         "last_scan":   last_scan,
         "stocks_in_db":stock_count,
         "total_stocks":total_len,
+        "database_diagnostics": db_diagnostics,
         "routes": {
             "GET /":                      "Frontend screener HTML",
             "GET /api/scan":              "Run background full scan",
