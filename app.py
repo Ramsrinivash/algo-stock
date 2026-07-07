@@ -58,7 +58,14 @@ def require_password(f):
         import alert_bot
         s = alert_bot.load_settings()
         correct_pwd = os.environ.get("SCREENER_PASSCODE") or s.get("settings_password", "5001")
-        if request.headers.get("X-Api-Password") != correct_pwd:
+        
+        # Check header first
+        provided_pwd = request.headers.get("X-Api-Password")
+        # Fallback to query parameter (e.g., /api/scan?password=5001) for easy cron-job integration
+        if not provided_pwd:
+            provided_pwd = request.args.get("password") or request.args.get("api_password") or request.args.get("X-Api-Password")
+            
+        if provided_pwd != correct_pwd:
             return jsonify({"status": "error", "message": "Unauthorized: Password incorrect or missing."}), 401
         return f(*args, **kwargs)
     return decorated_function
