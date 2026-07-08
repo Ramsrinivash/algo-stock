@@ -499,6 +499,18 @@ def api_status():
                 db_diagnostics["cached_token_masked"] = masked
         except Exception as read_err:
             db_diagnostics["settings_cache_status"] = f"read_error: {read_err}"
+
+        # Fetch the latest scan date from the database table (scans)
+        try:
+            conn = history_db.get_connection()
+            cursor = history_db.get_cursor(conn)
+            cursor.execute("SELECT scanned_at FROM scans ORDER BY scanned_at DESC LIMIT 1")
+            row = cursor.fetchone()
+            db_diagnostics["latest_db_scan"] = row["scanned_at"] if row else "None"
+            conn.close()
+        except Exception as scan_err:
+            db_diagnostics["latest_db_scan"] = f"error: {scan_err}"
+            
     except Exception as db_err:
         db_diagnostics["status"] = f"db_init_error: {db_err}"
 
