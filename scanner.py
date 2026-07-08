@@ -107,6 +107,10 @@ def scan_one(sym, yahoo_sym, name, sector, capital=100000, df_nifty=None):
     ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if len(close) >= 50 else 0
 
     if price < 20 or avg_vol < 100000 or (ema50 > 0 and price < ema50 * 0.95):
+        # Calculate daily change percentage
+        prev_close = float(close.iloc[-2]) if len(close) >= 2 else price
+        change_pct = round(((price - prev_close) / prev_close) * 100, 2) if prev_close > 0 else 0.0
+
         stock = {
             "sym":           sym,
             "yahoo":         yahoo_sym,
@@ -114,6 +118,8 @@ def scan_one(sym, yahoo_sym, name, sector, capital=100000, df_nifty=None):
             "sector":        sector,
             "status":        "ok",
             "price":         price,
+            "change":        change_pct,
+            "candle":        "None",
             "avgVol20":      avg_vol,
             "ema50":         ema50,
             "rsi":           50.0,
