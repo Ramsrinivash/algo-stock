@@ -98,8 +98,94 @@ def scan_one(sym, yahoo_sym, name, sector, capital=100000, df_nifty=None):
             "error":  "Could not fetch data or insufficient history"
         }
 
+    # ── Step 1a: Fast Hard Filters check (penny / illiquid / severe downtrend) ────
+    # Bypasses weekly fetches, patterns, S&R, and indicator math for stocks that fail hard filters
+    close = df["Close"]
+    price = float(close.iloc[-1])
+    volume = df["Volume"]
+    avg_vol = float(volume.iloc[-20:].mean()) if len(volume) >= 20 else 0
+    ema50 = float(close.ewm(span=50, adjust=False).mean().iloc[-1]) if len(close) >= 50 else 0
+
+    if price < 20 or avg_vol < 100000 or (ema50 > 0 and price < ema50 * 0.95):
+        stock = {
+            "sym":           sym,
+            "yahoo":         yahoo_sym,
+            "name":          name,
+            "sector":        sector,
+            "status":        "ok",
+            "price":         price,
+            "avgVol20":      avg_vol,
+            "ema50":         ema50,
+            "rsi":           50.0,
+            "atr":           0.0,
+            "atrPct":        0.0,
+            "rr":            0.0,
+            "slPrice":       price * 0.95,
+            "trendDays":     0,
+            "marketCap":     0,
+            "capCategory":   "Unknown",
+            "error":         "Failed daily hard filters (penny/illiquid/downtrend) - skipped heavy scan"
+        }
+        # Populate default required indicators to prevent database/frontend schema issues
+        stock.update({
+            "score":                  0,
+            "trendContinuationScore": 0,
+            "signal":                 "AVOID",
+            "momentum":               "low",
+            "verdict":                "Avoid - penny/illiquid/downtrend",
+            "verdictColor":           "red",
+            "shares":                 0,
+            "capitalNeeded":          0.0,
+            "maxLoss":                0.0,
+            "profit2":                0.0,
+            "profit3":                0.0,
+            "holdDuration":           "8-14 days",
+            "rrGatePassed":           False,
+            "ema9":                   price,
+            "ema20":                  price,
+            "ema21":                  price,
+            "ema25":                  price,
+            "ema200":                 price,
+            "aboveEma21":             False,
+            "aboveEma50":             False,
+            "ema9Above21":            False,
+            "ema9Above25":            False,
+            "emaCrossAlert":          False,
+            "emaBullStack":           False,
+            "hasEma200":              False,
+            "freshEmaCross":          False,
+            "freshStFlip":            False,
+            "daysAgo":                0,
+            "trigger":                "",
+            "prediction":             "Bearish",
+            "predictionConfidence":   0.0,
+            "predictionUpProb":       0.0,
+            "predictionFactors":      "Downtrend/Illiquid",
+            "rsiZone":                "WEAK",
+            "R":                      0.0,
+            "slPct":                  5.0,
+            "tgt1":                   price,
+            "tgt2":                   price,
+            "tgt3":                   price,
+            "distEma50":              0.0,
+            "distEma20":              0.0,
+            "higherHighsLows":        False,
+            "pullbackBuy":            False,
+            "nearEma20":              False,
+            "nearEma50":              False,
+            "pullbackLevel":          "None",
+            "pullbackZoneLow":        0.0,
+            "pullbackZoneHigh":       0.0,
+            "pullbackFromHigh":       0.0,
+            "pullbackDropPct":        0.0,
+            "breakoutResistance":     False,
+            "prevResistance20d":      0.0,
+        })
+        return clean_nan(stock)
+
     # ── Step 1b: Weekly OHLCV + Market Cap (via fetcher.py — SC1 fix) ────
     df_weekly, mkt_cap_cr, cap_cat = fetch_weekly_and_cap(yahoo_sym)
+
 
     # ── Step 2: Calculate Indicators ──────────────────────
     try:
