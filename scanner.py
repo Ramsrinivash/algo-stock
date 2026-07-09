@@ -343,7 +343,20 @@ def scan_all(stocks_list=None, capital=100000, verbose=True, progress_callback=N
         if verbose:
             print(f"  [{i+1:>3}/{total}]  {sym:<14}", end="  ", flush=True)
 
-        stock = scan_one(sym, yahoo_sym, name, sector, capital=capital, df_nifty=df_nifty)
+        try:
+            stock = scan_one(sym, yahoo_sym, name, sector, capital=capital, df_nifty=df_nifty)
+        except Exception as se:
+            # Fail-safe: Catch unexpected crashes (e.g. KeyError, NaN values, network errors) to keep the scan running
+            stock = {
+                "sym":    sym,
+                "yahoo":  yahoo_sym,
+                "name":   name,
+                "sector": sector,
+                "status": "error",
+                "score":  0,
+                "signal": "AVOID",
+                "error":  f"Unexpected crash: {se}"
+            }
 
         if stock["status"] == "ok":
             # Signal icon for terminal
